@@ -47,9 +47,7 @@ python -m venv .venv
 
 On Linux and macOS, use `.venv/bin/python`. Python 3.11 or newer is required.
 
-## Usage
-
-### Alphanumeric CNPJ schema limitations
+## Alphanumeric CNPJ schema limitations
 
 The CPF/CNPJ validators and the recipient CNPJ field accept alphanumeric CNPJ,
 but this does not establish full issuance support for an issuer whose CNPJ contains
@@ -59,6 +57,8 @@ also disagrees with the CNPJ position in related identifiers. These cases can fa
 local XSD validation; live SEFIN acceptance is unverified. Official schemas are
 preserved without speculative broadening of these patterns. Check the bundles in
 the [official documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual).
+
+## Usage
 
 ```python
 from datetime import date

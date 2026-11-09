@@ -276,7 +276,8 @@ class AdnClient:
         if not ((resp.status == 200 and status in ("DOCUMENTOSLOCALIZADOS", "NENHUMDOCUMENTOLOCALIZADO"))
                 or (resp.status == 404 and status == "NENHUMDOCUMENTOLOCALIZADO")):
             raise _transport_error(resp, "fetch_dfe")
-        items = body.get("LoteDFe", [])
+        items = body.get("LoteDFe")
+        items = [] if items is None else items
         if not isinstance(items, list) or (status == "NENHUMDOCUMENTOLOCALIZADO" and items):
             raise _transport_error(resp, "fetch_dfe")
         if status == "DOCUMENTOSLOCALIZADOS" and not items:

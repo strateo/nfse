@@ -26,6 +26,22 @@ from nfse_nacional.danfse import render_danfse
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_adn_null_empty_queue_is_exhausted(self):
+        client = AdnClient(ssl.create_default_context(), PRODUCAO_RESTRITA)
+        for status in (200, 404):
+            body = {'StatusProcessamento': 'NENHUM_DOCUMENTO_LOCALIZADO', 'LoteDFe': None}
+            with self.subTest(status=status), mock.patch.object(client._http, 'request', return_value=Response(status, json.dumps(body).encode(), {})):
+                batch = client.fetch_dfe(10)
+                self.assertTrue(batch.exhausted)
+                self.assertIsNone(batch.last_nsu)
+
+    def test_leading_comments_do_not_hide_primary_payload(self):
+        path = Path(__file__).parent / 'fixtures/pynfsenacional_golden_dps_signed.xml'
+        root = etree.parse(str(path)).getroot()
+        root.insert(0, etree.Comment('unsigned comment'))
+        root.insert(0, etree.ProcessingInstruction('test', 'unsigned instruction'))
+        signing.verify(root)
+
     def test_adn_documents_batch_must_advance_cursor(self):
         client = AdnClient(ssl.create_default_context(), PRODUCAO_RESTRITA)
         for fields in ({}, {'LoteDFe': []}, {'LoteDFe': [{'NSU': 10}]}):

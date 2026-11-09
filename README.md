@@ -47,9 +47,7 @@ No Linux e no macOS, use `.venv/bin/python`. É necessário Python 3.11 ou super
 
 A biblioteca não é um serviço hospedado de emissão. Sua aplicação deve persistir os documentos e controlar a numeração das DPS.
 
-## Uso
-
-### Limites dos esquemas para CNPJ alfanumérico
+## Limites dos esquemas para CNPJ alfanumérico
 
 A validação de CPF/CNPJ e o campo CNPJ do tomador aceitam CNPJ alfanumérico,
 mas isso não garante suporte completo à emissão por um prestador com letras no CNPJ.
@@ -59,6 +57,8 @@ de `chNFSe` também diverge da posição do CNPJ nos identificadores relacionado
 Esses casos podem falhar na validação XSD local; não são comprovadamente aceitos
 pela SEFIN. Os esquemas oficiais são preservados, sem ampliar esses padrões por
 suposição. Confira os pacotes na [documentação oficial](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual).
+
+## Uso
 
 O exemplo usa dados fictícios e o ambiente de Produção Restrita. Implemente `next_number()` com um contador atômico por CNPJ e série e `save_pending()` com armazenamento durável antes de enviar documentos. Os nomes e comentários de código são mantidos iguais nas duas versões deste README.
 

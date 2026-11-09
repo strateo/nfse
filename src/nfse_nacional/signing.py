@@ -131,7 +131,8 @@ def verify(root: etree._Element) -> None:
         raise ValueError("unsupported fiscal document root")
     targets = root.findall(f"{{{fiscal_ns}}}{payload}")
     signatures = root.findall("ds:Signature", ns)
-    if len(targets) != 1 or len(signatures) != 1 or root[0] is not targets[0]:
+    first_element = next((child for child in root if isinstance(child.tag, str)), None)
+    if len(targets) != 1 or len(signatures) != 1 or first_element is not targets[0]:
         raise ValueError("document needs one primary fiscal payload and one Signature")
     signature = signatures[0]
     signed_info = signature.find("ds:SignedInfo", ns)
