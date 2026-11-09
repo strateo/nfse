@@ -15,7 +15,7 @@ from lxml import etree
 
 from nfse_nacional import documents, schemas, signing
 from nfse_nacional.client import AdnClient, Response, SefinClient, _Http, _transport_error, _retry_after, decode_xml
-from nfse_nacional.dps import FederalTax, MunicipalTax, build_dps
+from nfse_nacional.dps import FederalTax, MunicipalTax, TotalTax, build_dps
 from nfse_nacional.environment import PRODUCAO, PRODUCAO_RESTRITA
 from nfse_nacional.errors import TransportError
 from nfse_nacional.pdf_fonts import FontConfigurationError, FontSet
@@ -26,6 +26,28 @@ from nfse_nacional.danfse import render_danfse
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_adn_documents_batch_must_advance_cursor(self):
+        client = AdnClient(ssl.create_default_context(), PRODUCAO_RESTRITA)
+        for fields in ({}, {'LoteDFe': []}, {'LoteDFe': [{'NSU': 10}]}):
+            body = {'StatusProcessamento': 'DOCUMENTOS_LOCALIZADOS', **fields}
+            with self.subTest(fields=fields), mock.patch.object(client._http, 'request', return_value=Response(200, json.dumps(body).encode(), {})):
+                with self.assertRaises(TransportError):
+                    client.fetch_dfe(10)
+
+    def test_total_tax_tuples_refuse_floats_and_preserve_decimal_values(self):
+        base = me_epp_dps()
+        provider = replace(base.prest, opSimpNac='1', regApTribSN=None)
+        for env in (PRODUCAO, PRODUCAO_RESTRITA):
+            for factory in (TotalTax.percent, TotalTax.amount):
+                for i in range(3):
+                    values = [Decimal('1.00')] * 3
+                    values[i] = 2.5
+                    with self.subTest(layout=env.layout, factory=factory.__name__, position=i):
+                        with self.assertRaisesRegex(TypeError, 'Decimal'):
+                            build_dps(replace(base, prest=provider, totTrib=factory(*values)), env)
+                valid = replace(base, prest=provider, totTrib=factory(Decimal('2.50'), 1, '0.00'))
+                schemas.validate(build_dps(valid, env), env.layout)
+
     def test_empty_and_non_gzip_documents_are_not_success(self):
         for value in ('AAAA', '', base64.b64encode(gzip.compress(b'')).decode()):
             with self.subTest(value=value), self.assertRaises(TransportError):

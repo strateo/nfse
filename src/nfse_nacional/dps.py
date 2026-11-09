@@ -395,11 +395,11 @@ def _values(parent: etree._Element, dps: Dps) -> None:
     if t.amount_fed_est_mun is not None:
         v = _group(tot, "vTotTrib")
         for tag, amount in zip(("vTotTribFed", "vTotTribEst", "vTotTribMun"), t.amount_fed_est_mun):
-            _sub(v, tag, Decimal(amount))
+            _sub(v, tag, format_decimal(amount))
     elif t.percent_fed_est_mun is not None:
         p = _group(tot, "pTotTrib")
         for tag, pct in zip(("pTotTribFed", "pTotTribEst", "pTotTribMun"), t.percent_fed_est_mun):
-            _sub(p, tag, Decimal(pct))
+            _sub(p, tag, format_decimal(pct))
     else:
         _sub(tot, "indTotTrib", t.indTotTrib)
         _sub(tot, "pTotTribSN", t.pTotTribSN)

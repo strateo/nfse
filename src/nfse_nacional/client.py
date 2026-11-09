@@ -279,6 +279,8 @@ class AdnClient:
         items = body.get("LoteDFe", [])
         if not isinstance(items, list) or (status == "NENHUMDOCUMENTOLOCALIZADO" and items):
             raise _transport_error(resp, "fetch_dfe")
+        if status == "DOCUMENTOSLOCALIZADOS" and not items:
+            raise _transport_error(resp, "fetch_dfe: documents located without documents")
         for item in items:
             if not isinstance(item, dict):
                 raise _transport_error(resp, "fetch_dfe")
@@ -286,6 +288,8 @@ class AdnClient:
             if (isinstance(nsu, bool) or not isinstance(nsu, (str, int))
                     or not str(nsu).isascii() or not str(nsu).isdigit()):
                 raise _transport_error(resp, "fetch_dfe")
+        if items and max(int(item["NSU"]) for item in items) <= int(last_nsu):
+            raise _transport_error(resp, "fetch_dfe: batch does not advance NSU")
         documents = [
             DfeDocument(
                 nsu=int(item["NSU"]),
