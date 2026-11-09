@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2 (2026-11-09)
+
+- Enforce own-application DPS series 1–49999 (E0010) without narrowing the
+  structural identifier helper used for other emission channels.
+- Reject competence after the Brasília emission date (E0015), resolving the
+  default emission timestamp once for both validation and XML serialization.
+- Omit pAliq in the canonical ME/EPP examples and test fixture; preserve explicit
+  rates because E0617/E0625 depend on municipal configuration and benefit rules.
+- Document the announced December 2026 NT 009 transition, release-1-only test
+  layout support, partial IBS/CBS model and unverified post-transition acceptance.
+
 ## 0.1.1 (2026-11-09)
 
 - Bind XML signature verification to the primary fiscal payload, reject duplicate

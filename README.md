@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/strateo/nfse/actions/workflows/tests.yml"><img src="https://github.com/strateo/nfse/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.1"><img src="https://img.shields.io/badge/release-v0.1.1-104A58" alt="v0.1.1"></a>
+  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.2"><img src="https://img.shields.io/badge/release-v0.1.2-104A58" alt="v0.1.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-104A58" alt="MIT"></a>
 </p>
 
@@ -60,6 +60,15 @@ suposição. Confira os pacotes na [documentação oficial](https://www.gov.br/n
 
 ## Uso
 
+`build_dps` emite pelo canal de aplicativo próprio: use série de 1 a 49999
+(E0010). A competência não pode ser posterior à data de emissão em Brasília
+(E0015). Os identificadores de outros canais continuam disponíveis em `dps_id`.
+
+O exemplo omite `pAliq`. As regras E0617/E0625 dependem da configuração do
+município de incidência e, no caso de E0625, também de benefícios municipais e
+retenção. Verifique esses parâmetros antes de informar a alíquota: a biblioteca
+preserva o valor fornecido e não determina sua admissibilidade municipal.
+
 O exemplo usa dados fictícios e o ambiente de Produção Restrita. Implemente `next_number()` com um contador atômico por CNPJ e série e `save_pending()` com armazenamento durável antes de enviar documentos. Os nomes e comentários de código são mantidos iguais nas duas versões deste README.
 
 ```python
@@ -81,7 +90,7 @@ note = d.Dps(
     prest=d.Provider(opSimpNac=d.OP_SIMP_NAC_ME_EPP, CNPJ="11222333000181", regApTribSN="1"),
     serv=d.Service(cTribNac="010101", xDescServ="Consultoria em TI", cLocPrestacao="3550308"),
     vServ=Decimal("1500.00"),
-    tribMun=d.MunicipalTax(pAliq=Decimal("2.5")),
+    tribMun=d.MunicipalTax(),
     totTrib=d.TotalTax.simples(Decimal("6.00")),
     toma=d.Taker(xNome="Acme Ltda", CNPJ="11444777000161",
                  end=d.Address(xLgr="Av. Paulista", nro="1000", xBairro="Bela Vista",
@@ -138,6 +147,24 @@ Os documentos, o `report.json` com os códigos de erro de cada etapa e o estado 
 O contador desse script atende testes com um único operador; ele não é um alocador concorrente para produção. Uma execução real com A1 exige autorização do emissor. A validação XSD local não comprova consistência de CEP, poderes de representação nem classificação tributária. Os testes automatizados do script usam certificados temporários e param antes da rede.
 
 ## Desenvolvimento
+
+### Transição de leiaute em produção
+
+Situação verificada em 09/11/2026: o comunicado oficial de 29/10 mantém NT 004/007
+em produção e prevê os releases 1 a 3 da NT 009 em produção em 01/12/2026, com
+implantação gradual e cronograma formal a publicar. `PRODUCAO` ainda usa o leiaute
+anterior, e `Layout.NT009` representa somente o release 1 de testes. Esta versão
+não implementa os ajustes posteriores da NT 009 v1.01 nem muda de leiaute pela data.
+Uma implantação em produção exige conferir o cronograma e o pacote oficial
+correspondente; a compatibilidade após a transição não está comprovada.
+
+O ADN pode aceitar a ausência de IBS/CBS mesmo para emissores sujeitos à obrigação.
+Informar o grupo exige cumprir os campos e classificações aplicáveis; o modelo
+atual é parcial e a aceitação técnica não comprova conformidade tributária.
+Veja o [comunicado oficial](https://www.gov.br/nfse/pt-br/noticias/nfs-e-nacional-confira-oas-rientacoes-sobre-leiaute-em-producao-regras-de-preenchimento-de-ibs-cbs-e-status-da-nota-tecnica-009)
+e as [regras verificadas](docs/research/nfse-nacional-learnings.md).
+
+### Testes locais
 
 ```bash
 python -m venv .venv
