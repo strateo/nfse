@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">NFS-e Nacional</title>
+  <desc id="desc">Documento fiscal em creme sobre petróleo, com linhas de processo e um nó em verde-sálvia.</desc>
+  <rect width="512" height="512" rx="96" fill="#104A58"/>
+  <path d="M152 104h144l64 64v240H152z" fill="none" stroke="#F5F2E9" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M296 104v64h64M200 216h112M200 256h72" fill="none" stroke="#F5F2E9" stroke-width="12" stroke-linecap="square" stroke-linejoin="round"/>
+  <path d="M200 304v48h88" fill="none" stroke="#9DB5B2" stroke-width="8"/>
+  <path d="m280 304 16 16 32-40" fill="none" stroke="#F5F2E9" stroke-width="12" stroke-linecap="square" stroke-linejoin="round"/>
+  <rect x="288" y="336" width="32" height="32" fill="#9DB5B2"/>
+</svg>
