@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/strateo/nfse/actions/workflows/tests.yml"><img src="https://github.com/strateo/nfse/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-104A58" alt="v0.1.0"></a>
+  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.1"><img src="https://img.shields.io/badge/release-v0.1.1-104A58" alt="v0.1.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-104A58" alt="MIT"></a>
 </p>
 
@@ -46,6 +46,17 @@ python -m venv .venv
 No Linux e no macOS, use `.venv/bin/python`. É necessário Python 3.11 ou superior.
 
 A biblioteca não é um serviço hospedado de emissão. Sua aplicação deve persistir os documentos e controlar a numeração das DPS.
+
+## Limites dos esquemas para CNPJ alfanumérico
+
+A validação de CPF/CNPJ e o campo CNPJ do tomador aceitam CNPJ alfanumérico,
+mas isso não garante suporte completo à emissão por um prestador com letras no CNPJ.
+O pacote de produção de 09/02/2026 mantém padrões numéricos para os identificadores
+de DPS, NFS-e e eventos. No pacote de Produção Restrita de 20/10/2026, o padrão
+de `chNFSe` também diverge da posição do CNPJ nos identificadores relacionados.
+Esses casos podem falhar na validação XSD local; não são comprovadamente aceitos
+pela SEFIN. Os esquemas oficiais são preservados, sem ampliar esses padrões por
+suposição. Confira os pacotes na [documentação oficial](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual).
 
 ## Uso
 
@@ -91,7 +102,7 @@ except RejectionError as e:
     print(e.codes)                         # e.g. ['E0712']
 ```
 
-Para cancelar, use `events.build_cancellation(...)`, assine com `signing.sign` e envie com `sefin.register_event(key, xml)`. Para distribuição, chame `AdnClient(cert.ssl_context(), ENV).fetch_dfe(last_nsu)` até `batch.exhausted`, persistindo `batch.last_nsu` após cada lote.
+Para cancelar, use `events.build_cancellation(...)`, assine com `signing.sign` e envie com `sefin.register_event(key, xml)`. Para distribuição, chame `AdnClient(cert.ssl_context(), ENV).fetch_dfe(last_nsu)` até `batch.exhausted`, persistindo `batch.last_nsu` após cada lote somente quando ele não for `None`.
 
 ### DANFSe (PDF)
 
@@ -101,7 +112,7 @@ O PDF é gerado localmente em uma página A4, seguindo como referência a NT 008
 from nfse_nacional.danfse import Watermark, render_danfse
 
 pdf = render_danfse(result.nfse_xml)                       # authorized NFS-e XML from emit()
-pdf = render_danfse(xml, watermark=Watermark.CANCELLED)    # after a 101101 cancellation event
+pdf = render_danfse(result.nfse_xml, watermark=Watermark.CANCELLED)  # after a 101101 cancellation event
 ```
 
 Cancelamento e substituição são eventos separados do XML da NFS-e; informe a marca-d'água correspondente. Em Produção Restrita, o documento recebe automaticamente a indicação “NFS-e SEM VALIDADE JURÍDICA”.

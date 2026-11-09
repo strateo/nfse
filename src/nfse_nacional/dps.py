@@ -223,6 +223,8 @@ def now_brasilia() -> datetime:
 def _sub(parent: etree._Element, tag: str, value: object | None = None) -> etree._Element | None:
     if value is None:
         return None
+    if isinstance(value, float):
+        raise TypeError("use Decimal, int or str for amounts, not float")
     el = etree.SubElement(parent, f"{{{NFSE_NS}}}{tag}")
     if isinstance(value, Decimal):
         el.text = format_decimal(value)
@@ -246,6 +248,14 @@ def _validate(dps: Dps) -> None:
     Run before taking an nDPS from the series: a rejected DPS still burns its number.
     """
     p = dps.prest
+    if isinstance(dps.vServ, float):
+        raise TypeError("use Decimal, int or str for amounts, not float")
+    if dps.tribFed is not None:
+        f = dps.tribFed
+        # Anexo I piscofins requires CST; never discard dependent caller input.
+        _check(f.CST is not None or all(getattr(f, field) is None for field in
+               ("vBCPisCofins", "pAliqPis", "pAliqCofins", "vPis", "vCofins", "tpRetPisCofins")),
+               "PIS/COFINS values require CST")
     _check((p.CNPJ is None) != (p.CPF is None), "prest needs exactly one of CNPJ or CPF")
     _check(p.CNPJ is None or is_valid_cnpj(p.CNPJ), f"invalid prest CNPJ: {p.CNPJ!r}")
     _check(p.CPF is None or is_valid_cpf(p.CPF), f"invalid prest CPF: {p.CPF!r}")
@@ -268,6 +278,8 @@ def _validate(dps: Dps) -> None:
         _check(t.pTotTribSN is None, "pTotTribSN is only for ME/EPP (E0712)")
 
     if dps.tribMun.pAliq is not None:
+        if isinstance(dps.tribMun.pAliq, float):
+            raise TypeError("use Decimal, int or str for amounts, not float")
         _check(Decimal(dps.tribMun.pAliq) <= 5, "pAliq above 5% (E0595); it is a percentage, not a fraction")
     _check(dps.serv.cTribMun != "000", "omit cTribMun instead of sending '000' (E0315)")
     _check(
@@ -383,11 +395,11 @@ def _values(parent: etree._Element, dps: Dps) -> None:
     if t.amount_fed_est_mun is not None:
         v = _group(tot, "vTotTrib")
         for tag, amount in zip(("vTotTribFed", "vTotTribEst", "vTotTribMun"), t.amount_fed_est_mun):
-            _sub(v, tag, Decimal(amount))
+            _sub(v, tag, format_decimal(amount))
     elif t.percent_fed_est_mun is not None:
         p = _group(tot, "pTotTrib")
         for tag, pct in zip(("pTotTribFed", "pTotTribEst", "pTotTribMun"), t.percent_fed_est_mun):
-            _sub(p, tag, Decimal(pct))
+            _sub(p, tag, format_decimal(pct))
     else:
         _sub(tot, "indTotTrib", t.indTotTrib)
         _sub(tot, "pTotTribSN", t.pTotTribSN)

@@ -8,7 +8,8 @@ Steps, each reported PASS/FAIL with the SEFIN/ADN E-codes:
 
 Only Produção Restrita is reachable from here: notes issued there have no legal validity.
 The password comes from NFSE_PFX_PASSWORD or a hidden prompt and is never printed or saved.
-Every document is written to --out before it is sent, so an interrupted run can be resumed.
+Every document is written to --out before it is sent. After interruption, recover the
+saved signed DPS with SefinClient.recover(); rerunning this script allocates a new number.
 
     python scripts/smoke_producao_restrita.py --pfx empresa.pfx --c-loc-emi 3550308 \\
         --op-simp-nac 3 --p-tot-trib-sn 6.00 --c-trib-nac 010101 --desc "Teste de integração"
@@ -20,6 +21,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -73,10 +75,23 @@ def _next_n_dps(out: Path, cnpj: str, serie: str, explicit: str | None) -> str:
     path = out / STATE_FILE
     state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     key = f"{cnpj}/{serie}"
-    n_dps = explicit or str(int(state.get(key, "0")) + 1)
-    state[key] = n_dps
+    previous = int(state.get(key, "0"))
+    n_dps = explicit if explicit is not None else str(previous + 1)
+    if not re.fullmatch(r"[1-9][0-9]{0,14}", n_dps):
+        raise ValueError("nDPS must be 1-15 digits without leading zeros")
+    state[key] = str(max(previous, int(n_dps)))
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return n_dps
+
+
+def _save_signed(path: Path, signed: bytes) -> None:
+    """Keep the exact persisted request for recovery instead of replacing it."""
+    try:
+        with path.open("xb") as f:
+            f.write(signed)
+    except FileExistsError:
+        if path.read_bytes() != signed:
+            raise ValueError("signed DPS already exists with different bytes; recover the saved document") from None
 
 
 def build_note(args: argparse.Namespace, cnpj: str, n_dps: str) -> d.Dps:
@@ -114,7 +129,7 @@ def build_note(args: argparse.Namespace, cnpj: str, n_dps: str) -> d.Dps:
         cLocEmi=args.c_loc_emi,
         serie=args.serie,
         nDPS=n_dps,
-        dCompet=date.today(),
+        dCompet=d.now_brasilia().date(),
         prest=d.Provider(
             opSimpNac=args.op_simp_nac,
             CNPJ=cnpj,
@@ -161,10 +176,10 @@ def run(args: argparse.Namespace) -> int:
         return 1
     report.record("certificate", True, f"CNPJ {cnpj}, valid until {cert.not_valid_after:%Y-%m-%d}")
 
-    n_dps = _next_n_dps(out, cnpj, args.serie, args.n_dps)
-    note = build_note(args, cnpj, n_dps)
-    stem = note.id
     try:
+        n_dps = _next_n_dps(out, cnpj, args.serie, args.n_dps)
+        note = build_note(args, cnpj, n_dps)
+        stem = note.id
         root = d.build_dps(note, ENV)
         signing.sign(root, cert, profile)
         schemas.validate(root, ENV.layout)
@@ -174,7 +189,12 @@ def run(args: argparse.Namespace) -> int:
         report.save()
         return 1
     signed = signing.to_bytes(root)
-    (out / f"{stem}.dps.xml").write_bytes(signed)
+    try:
+        _save_signed(out / f"{stem}.dps.xml", signed)
+    except (ValueError, OSError) as e:
+        report.record("save DPS", False, str(e))
+        report.save()
+        return 1
     report.record("build DPS", True, f"{note.id} (nDPS {n_dps}, {profile.name}) saved, XSD valid, signature verified")
 
     if args.dry_run:

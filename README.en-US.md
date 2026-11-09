@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/strateo/nfse/actions/workflows/tests.yml"><img src="https://github.com/strateo/nfse/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-104A58" alt="v0.1.0"></a>
+  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.1"><img src="https://img.shields.io/badge/release-v0.1.1-104A58" alt="v0.1.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-104A58" alt="MIT"></a>
 </p>
 
@@ -46,6 +46,17 @@ python -m venv .venv
 ```
 
 On Linux and macOS, use `.venv/bin/python`. Python 3.11 or newer is required.
+
+## Alphanumeric CNPJ schema limitations
+
+The CPF/CNPJ validators and the recipient CNPJ field accept alphanumeric CNPJ,
+but this does not establish full issuance support for an issuer whose CNPJ contains
+letters. The production bundle dated 2026-02-09 retains numeric-only DPS, NFS-e
+and event identifier patterns. In the 2026-10-20 test bundle, the `chNFSe` pattern
+also disagrees with the CNPJ position in related identifiers. These cases can fail
+local XSD validation; live SEFIN acceptance is unverified. Official schemas are
+preserved without speculative broadening of these patterns. Check the bundles in
+the [official documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual).
 
 ## Usage
 
@@ -89,7 +100,7 @@ except RejectionError as e:
     print(e.codes)                         # e.g. ['E0712']
 ```
 
-Cancellation uses `events.build_cancellation(...)`, then `signing.sign` and `sefin.register_event(key, xml)`. Distribution uses `AdnClient(cert.ssl_context(), ENV).fetch_dfe(last_nsu)` in a loop until `batch.exhausted`, persisting `batch.last_nsu` after each batch.
+Cancellation uses `events.build_cancellation(...)`, then `signing.sign` and `sefin.register_event(key, xml)`. Distribution uses `AdnClient(cert.ssl_context(), ENV).fetch_dfe(last_nsu)` in a loop until `batch.exhausted`, persisting `batch.last_nsu` after each batch only when it is not `None`.
 
 ### DANFSe (PDF)
 
@@ -99,7 +110,7 @@ The PDF is rendered locally as a single A4 page targeting NT 008/2026 v1.02:
 from nfse_nacional.danfse import Watermark, render_danfse
 
 pdf = render_danfse(result.nfse_xml)                       # authorized NFS-e XML from emit()
-pdf = render_danfse(xml, watermark=Watermark.CANCELLED)    # after a 101101 cancellation event
+pdf = render_danfse(result.nfse_xml, watermark=Watermark.CANCELLED)  # after a 101101 cancellation event
 ```
 
 Cancellation and substitution are separate events, not part of the NFS-e XML, so pass the watermark yourself. In Produção Restrita the document says "NFS-e SEM VALIDADE JURÍDICA" automatically.
