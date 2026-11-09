@@ -60,6 +60,15 @@ the [official documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentac
 
 ## Usage
 
+`build_dps` issues through the own-application channel: use series 1 through 49999
+(E0010). Competence must not be after the Brasília emission date (E0015).
+Identifiers for other channels remain available through `dps_id`.
+
+The example omits `pAliq`. Rules E0617/E0625 depend on the incidence municipality's
+configuration and, for E0625, municipal benefits and withholding. Check those
+parameters before supplying a rate: the library preserves your value and does
+not determine its municipal admissibility.
+
 ```python
 from datetime import date
 from decimal import Decimal
@@ -79,7 +88,7 @@ note = d.Dps(
     prest=d.Provider(opSimpNac=d.OP_SIMP_NAC_ME_EPP, CNPJ="11222333000181", regApTribSN="1"),
     serv=d.Service(cTribNac="010101", xDescServ="Consultoria em TI", cLocPrestacao="3550308"),
     vServ=Decimal("1500.00"),
-    tribMun=d.MunicipalTax(pAliq=Decimal("2.5")),
+    tribMun=d.MunicipalTax(),
     totTrib=d.TotalTax.simples(Decimal("6.00")),
     toma=d.Taker(xNome="Acme Ltda", CNPJ="11444777000161",
                  end=d.Address(xLgr="Av. Paulista", nro="1000", xBairro="Bela Vista",
@@ -144,6 +153,24 @@ own approval. Its XSD dry run does not prove CEP consistency, account authority 
 classification. All automated smoke tests use throwaway PKI and stop before network.
 
 ## Development
+
+### Production layout transition
+
+Status checked on 2026-11-09: the official October 29 notice keeps NT 004/007 in
+production and targets NT 009 releases 1 through 3 for production on 2026-12-01,
+with staged deployment and a formal schedule to follow. `PRODUCAO` still uses
+the earlier layout; `Layout.NT009` covers only test release 1. This version does
+not implement the later NT 009 v1.01 adjustments or switch layouts by date.
+Production deployment requires checking the schedule and matching official
+bundle; compatibility after the transition has not been established.
+
+ADN can accept missing IBS/CBS data even from obligated issuers. Supplying the
+group requires the applicable fields and classifications; the current model is
+partial, and technical acceptance does not establish tax compliance.
+See the [official notice](https://www.gov.br/nfse/pt-br/noticias/nfs-e-nacional-confira-oas-rientacoes-sobre-leiaute-em-producao-regras-de-preenchimento-de-ibs-cbs-e-status-da-nota-tecnica-009)
+and [verified rules](docs/research/nfse-nacional-learnings.md).
+
+### Local tests
 
 ```bash
 python -m venv .venv

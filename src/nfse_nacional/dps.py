@@ -8,6 +8,7 @@ than silently dropped.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -242,11 +243,17 @@ def _check(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def _validate(dps: Dps) -> None:
+def _validate(dps: Dps, dh_emi: datetime) -> None:
     """Offline guards for rules every reference implementation confirmed against SEFIN.
 
     Run before taking an nDPS from the series: a rejected DPS still burns its number.
     """
+    # Anexo I, level 1: this builder emits through the own-application channel.
+    _check(re.fullmatch(r"[0-9]{1,5}", dps.serie) is not None and 1 <= int(dps.serie) <= 49999,
+           "own-application DPS serie must be between 1 and 49999 (E0010)")
+    _check(dh_emi.tzinfo is not None and dh_emi.utcoffset() is not None, "datetime must be timezone-aware")
+    _check(dps.dCompet <= dh_emi.astimezone(BRASILIA).date(),
+           "dCompet must not be later than the emission date in Brasilia (E0015)")
     p = dps.prest
     if isinstance(dps.vServ, float):
         raise TypeError("use Decimal, int or str for amounts, not float")
@@ -422,12 +429,13 @@ def _ibscbs(parent: etree._Element, g: IbsCbs, layout: Layout) -> None:
 
 def build_dps(dps: Dps, environment: Environment) -> etree._Element:
     """Build the unsigned ``<DPS>`` element in the layout the environment currently expects."""
-    _validate(dps)
+    dh_emi = dps.dhEmi if dps.dhEmi is not None else now_brasilia()
+    _validate(dps, dh_emi)
     layout = environment.layout
     root = etree.Element(f"{{{NFSE_NS}}}DPS", nsmap={None: NFSE_NS}, versao=DPS_VERSION)
     inf = etree.SubElement(root, f"{{{NFSE_NS}}}infDPS", Id=dps.id)
     _sub(inf, "tpAmb", environment.tp_amb)
-    _sub(inf, "dhEmi", format_datetime(dps.dhEmi or now_brasilia()))
+    _sub(inf, "dhEmi", format_datetime(dh_emi))
     _sub(inf, "verAplic", dps.verAplic)
     _sub(inf, "serie", dps.serie)
     _sub(inf, "nDPS", dps.nDPS)

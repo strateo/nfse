@@ -1,12 +1,13 @@
 import unittest
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from unittest import mock
 
 from lxml import etree
 
 from nfse_nacional import dps as d
-from nfse_nacional import events, schemas
+from nfse_nacional import documents, events, schemas
 from nfse_nacional.environment import PRODUCAO, PRODUCAO_RESTRITA
 
 NS = {"n": d.NFSE_NS}
@@ -24,7 +25,7 @@ def me_epp_dps(**changes) -> d.Dps:
         prest=d.Provider(opSimpNac=d.OP_SIMP_NAC_ME_EPP, CNPJ="11222333000181", regApTribSN="1", IM="12345"),
         serv=d.Service(cTribNac="010101", xDescServ="Consultoria em tecnologia da informação", cLocPrestacao="3550308", cNBS="115022000"),
         vServ=Decimal("1500"),
-        tribMun=d.MunicipalTax(pAliq=Decimal("2.5")),
+        tribMun=d.MunicipalTax(),
         totTrib=d.TotalTax.simples(Decimal("6")),
         toma=d.Taker(
             xNome="Acme Serviços Ltda",
@@ -48,6 +49,21 @@ class DpsXsdTest(unittest.TestCase):
 
     def test_me_epp_valid_in_both_layouts(self):
         self.assert_valid_everywhere(me_epp_dps())
+        for env in ENVIRONMENTS:
+            root = d.build_dps(me_epp_dps(), env)
+            self.assertIsNone(root.find("n:infDPS/n:valores/n:trib/n:tribMun/n:pAliq", NS))
+
+    def test_explicit_rate_is_preserved_for_municipal_validation(self):
+        # E0617/E0625 also depend on municipal configuration unavailable offline.
+        base = me_epp_dps(tribMun=d.MunicipalTax(pAliq=Decimal("2.50")))
+        non_optante = replace(base, prest=d.Provider(opSimpNac="1", CNPJ="11222333000181"),
+                              totTrib=d.TotalTax.percent(Decimal("0"), Decimal("0"), Decimal("0")))
+        for note in (base, non_optante):
+            for env in ENVIRONMENTS:
+                with self.subTest(regime=note.prest.opSimpNac, env=env.name):
+                    root = d.build_dps(note, env)
+                    schemas.validate(root, env.layout)
+                    self.assertEqual(text(root, "n:infDPS/n:valores/n:trib/n:tribMun/n:pAliq"), "2.50")
 
     def test_mei_valid_in_both_layouts(self):
         self.assert_valid_everywhere(
@@ -115,7 +131,7 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(rest_cserv, ["cTribNac", "cNBS", "xDescServ"])
 
     def test_formats(self):
-        el = d.build_dps(me_epp_dps(), PRODUCAO)
+        el = d.build_dps(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN="2", pAliq=Decimal("2.5"))), PRODUCAO)
         self.assertEqual(el.get("versao"), "1.01")
         self.assertEqual(el.nsmap, {None: d.NFSE_NS})
         self.assertEqual(text(el, "n:infDPS/n:dhEmi"), "2026-11-03T10:15:00-03:00")
@@ -133,9 +149,59 @@ class LayoutTest(unittest.TestCase):
 
 class GuardTest(unittest.TestCase):
     def assert_rejected(self, dps, fragment):
-        with self.assertRaises(ValueError) as ctx:
-            d.build_dps(dps, PRODUCAO)
-        self.assertIn(fragment, str(ctx.exception))
+        for env in ENVIRONMENTS:
+            with self.subTest(env=env.name):
+                with self.assertRaises(ValueError) as ctx:
+                    d.build_dps(dps, env)
+                self.assertIn(fragment, str(ctx.exception))
+
+    def test_own_application_series_range(self):
+        for serie in ("0", "00000", "50000", "69999", "70000", "79999", "80000", "89999"):
+            with self.subTest(serie=serie):
+                self.assert_rejected(me_epp_dps(serie=serie), "E0010")
+        for serie in ("1", "00001", "49999"):
+            for env in ENVIRONMENTS:
+                with self.subTest(serie=serie, env=env.name):
+                    schemas.validate(d.build_dps(me_epp_dps(serie=serie), env), env.layout)
+
+    def test_reserved_series_identifiers_remain_available_for_queries(self):
+        for serie in ("50000", "70000", "89999"):
+            with self.subTest(serie=serie):
+                identifier = documents.dps_id("3550308", cnpj="11222333000181", serie=serie, n_dps="1")
+                self.assertIn(serie, identifier)
+
+    def test_competence_cannot_follow_emission(self):
+        note = me_epp_dps()
+        self.assert_rejected(replace(note, dCompet=note.dCompet + timedelta(days=1)), "E0015")
+        for competence in (note.dCompet, note.dCompet - timedelta(days=1)):
+            for env in ENVIRONMENTS:
+                schemas.validate(d.build_dps(replace(note, dCompet=competence), env), env.layout)
+
+    def test_competence_uses_brasilia_emission_date(self):
+        before_midnight = datetime(2026, 11, 4, 1, 30, tzinfo=timezone.utc)
+        self.assert_rejected(me_epp_dps(dhEmi=before_midnight, dCompet=date(2026, 11, 4)), "E0015")
+        for env in ENVIRONMENTS:
+            with self.subTest(env=env.name):
+                root = d.build_dps(me_epp_dps(dhEmi=before_midnight, dCompet=date(2026, 11, 3)), env)
+                self.assertEqual(text(root, "n:infDPS/n:dhEmi"), "2026-11-03T22:30:00-03:00")
+                schemas.validate(root, env.layout)
+
+    def test_default_emission_is_resolved_once_across_midnight(self):
+        first = datetime(2026, 11, 3, 23, 59, 59, tzinfo=d.BRASILIA)
+        second = first + timedelta(seconds=2)
+        for env in ENVIRONMENTS:
+            with self.subTest(env=env.name):
+                with mock.patch.object(d, "now_brasilia", side_effect=[first, second]) as clock:
+                    root = d.build_dps(me_epp_dps(dhEmi=None), env)
+                    clock.assert_called_once_with()
+                self.assertEqual(text(root, "n:infDPS/n:dhEmi"), first.isoformat())
+                with mock.patch.object(d, "now_brasilia", side_effect=[first, second]) as clock:
+                    with self.assertRaisesRegex(ValueError, "E0015"):
+                        d.build_dps(me_epp_dps(dhEmi=None, dCompet=second.date()), env)
+                    clock.assert_called_once_with()
+
+    def test_naive_emission_remains_rejected(self):
+        self.assert_rejected(me_epp_dps(dhEmi=datetime(2026, 11, 3)), "timezone-aware")
 
     def test_regime_rules(self):
         self.assert_rejected(me_epp_dps(totTrib=d.TotalTax.mei()), "E0712")
@@ -152,7 +218,7 @@ class GuardTest(unittest.TestCase):
         self.assert_rejected(me_epp_dps(ibscbs=d.IbsCbs(cIndOp="1", CST="000", cClassTrib="000001"),
                                         serv=d.Service(cTribNac="010101", xDescServ="x", cLocPrestacao="3550308")), "E0322")
         self.assert_rejected(me_epp_dps(toma=d.Taker(xNome="Self", CNPJ="11222333000181")), "E0202")
-        self.assert_rejected(me_epp_dps(tribMun=d.MunicipalTax(pAliq=Decimal("25"))), "E0595")
+        self.assert_rejected(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN="2", pAliq=Decimal("25"))), "E0595")
 
     def test_required_recipient_addresses_are_guarded_without_repeating_pii(self):
         cases = (
