@@ -94,9 +94,13 @@ class FontSet:
                 raise FontConfigurationError("PDF text contains combining marks that need text shaping; DANFSe rendering was stopped")
             if self._needs_shaping(char):
                 raise FontConfigurationError("PDF text uses a script requiring complex shaping; DANFSe rendering was stopped")
-            if ord(char) < 256:
-                if ord(char) < 32 and char not in "\n\t\r":
-                    raise FontConfigurationError("PDF text contains an unsupported control character")
+            if unicodedata.category(char) == "Cc" and char not in "\n\t\r":
+                raise FontConfigurationError("PDF text contains an unsupported control character")
+            try:
+                code = char.encode("cp1252")[0]
+            except UnicodeEncodeError:
+                code = None
+            if char in "\n\t\r" or (code is not None and pdfmetrics.getFont(base_font).encoding.vector[code]):
                 selected.append(base_font)
                 continue
             match = next((font.name for font in fonts if font.supports(char)), None)

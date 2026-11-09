@@ -24,6 +24,22 @@ spec.loader.exec_module(smoke)
 
 
 class SmokeScriptDryRunTest(unittest.TestCase):
+    def test_explicit_number_does_not_rewind_counter(self):
+        with tempfile.TemporaryDirectory(prefix="nfse-counter-") as tmp:
+            out = Path(tmp)
+            self.assertEqual(smoke._next_n_dps(out, "11222333000181", "900", "100"), "100")
+            self.assertEqual(smoke._next_n_dps(out, "11222333000181", "900", "5"), "5")
+            self.assertEqual(smoke._next_n_dps(out, "11222333000181", "900", None), "101")
+
+    def test_signed_document_cannot_be_replaced(self):
+        with tempfile.TemporaryDirectory(prefix="nfse-signed-") as tmp:
+            path = Path(tmp) / "request.dps.xml"
+            smoke._save_signed(path, b"original")
+            smoke._save_signed(path, b"original")
+            with self.assertRaisesRegex(ValueError, "recover"):
+                smoke._save_signed(path, b"changed")
+            self.assertEqual(path.read_bytes(), b"original")
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="nfse-test-"))
         self.addCleanup(shutil.rmtree, self.tmp)

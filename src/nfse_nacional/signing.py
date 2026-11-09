@@ -9,6 +9,7 @@ appended to the root, after ``infDPS``/``infPedReg``.
 from __future__ import annotations
 
 import base64
+import binascii
 import enum
 import hashlib
 
@@ -16,6 +17,7 @@ from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from lxml import etree
 
 from .certificate import Certificate
@@ -121,26 +123,63 @@ def verify(root: etree._Element) -> None:
     A local self-check before blaming SEFIN for E0714; it does not validate the ICP-Brasil chain.
     """
     ns = {"ds": DSIG_NS}
-    signature = root.find("ds:Signature", ns)
-    if signature is None:
-        raise ValueError("no Signature element")
+    fiscal_ns = "http://www.sped.fazenda.gov.br/nfse"
+    payloads = {"DPS": "infDPS", "NFSe": "infNFSe", "pedRegEvento": "infPedReg", "evento": "infEvento"}
+    name = etree.QName(root)
+    payload = payloads.get(name.localname)
+    if name.namespace != fiscal_ns or payload is None:
+        raise ValueError("unsupported fiscal document root")
+    targets = root.findall(f"{{{fiscal_ns}}}{payload}")
+    signatures = root.findall("ds:Signature", ns)
+    if len(targets) != 1 or len(signatures) != 1 or root[0] is not targets[0]:
+        raise ValueError("document needs one primary fiscal payload and one Signature")
+    signature = signatures[0]
     signed_info = signature.find("ds:SignedInfo", ns)
-    method = signed_info.find("ds:SignatureMethod", ns).get("Algorithm")
+    if signed_info is None:
+        raise ValueError("missing SignedInfo")
+    canonical = signed_info.find("ds:CanonicalizationMethod", ns)
+    if canonical is None or canonical.get("Algorithm") != C14N:
+        raise ValueError("unsupported canonicalization method")
+    methods = signed_info.findall("ds:SignatureMethod", ns)
+    if len(methods) != 1:
+        raise ValueError("expected one SignatureMethod")
+    method = methods[0].get("Algorithm")
     profile = next((p for p in SignatureProfile if p.signature_uri == method), None)
     if profile is None:
         raise ValueError(f"unsupported SignatureMethod {method}")
-    reference = signed_info.find("ds:Reference", ns)
-    ref_id = reference.get("URI", "").removeprefix("#")
-    target = next((el for el in root.iter() if el.get("Id") == ref_id), None)
-    if target is None:
-        raise ValueError("referenced element not found")
+    references = signed_info.findall("ds:Reference", ns)
+    if len(references) != 1:
+        raise ValueError("expected one fiscal Reference")
+    reference = references[0]
+    target = targets[0]
+    ref_id = target.get("Id")
+    if not ref_id or reference.get("URI") != "#" + ref_id:
+        raise ValueError("Reference must identify the primary fiscal payload")
+    if sum(el.get("Id") == ref_id for el in root.iter()) != 1:
+        raise ValueError("ambiguous duplicate fiscal Id")
+    transforms = reference.findall("ds:Transforms/ds:Transform", ns)
+    digest_method = reference.find("ds:DigestMethod", ns)
+    if ([el.get("Algorithm") for el in transforms] != [ENVELOPED, C14N]
+            or digest_method is None or digest_method.get("Algorithm") != profile.digest_uri):
+        raise ValueError("unsupported digest or transform algorithms")
     expected = base64.b64encode(hashlib.new(profile.hash_name, _c14n(target)).digest()).decode()
     if reference.findtext("ds:DigestValue", namespaces=ns) != expected:
         raise ValueError("digest mismatch: signed content was altered")
-    cert = x509.load_der_x509_certificate(base64.b64decode(signature.findtext(".//ds:X509Certificate", namespaces=ns)))
+    cert_text = signature.findtext("ds:KeyInfo/ds:X509Data/ds:X509Certificate", namespaces=ns)
+    value_text = signature.findtext("ds:SignatureValue", namespaces=ns)
+    if not cert_text or not value_text:
+        raise ValueError("missing signature value or certificate")
     try:
-        cert.public_key().verify(
-            base64.b64decode(signature.findtext("ds:SignatureValue", namespaces=ns)),
+        cert = x509.load_der_x509_certificate(base64.b64decode("".join(cert_text.split()), validate=True))
+        value = base64.b64decode("".join(value_text.split()), validate=True)
+    except (ValueError, binascii.Error) as e:
+        raise ValueError("invalid signature value or certificate encoding") from e
+    public_key = cert.public_key()
+    if not isinstance(public_key, RSAPublicKey):
+        raise ValueError("signature certificate must contain an RSA public key")
+    try:
+        public_key.verify(
+            value,
             _c14n(signed_info),
             padding.PKCS1v15(),
             profile.hash_algorithm(),

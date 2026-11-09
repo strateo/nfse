@@ -20,7 +20,7 @@ def is_valid_cnpj(cnpj: str) -> bool:
     Each character is worth ``ord(c) - 48`` (so '0'..'9' -> 0..9, 'A' -> 17 ... 'Z' -> 42);
     the two check digits stay numeric and use the classic mod-11 weights.
     """
-    if not _CNPJ_RE.match(cnpj) or len(set(cnpj)) == 1:
+    if not _CNPJ_RE.fullmatch(cnpj) or len(set(cnpj)) == 1:
         return False
     values = [ord(c) - 48 for c in cnpj]
     dv1 = _mod11_dv(values[:12], _CNPJ_WEIGHTS[1:])
@@ -29,7 +29,7 @@ def is_valid_cnpj(cnpj: str) -> bool:
 
 
 def is_valid_cpf(cpf: str) -> bool:
-    if not _CPF_RE.match(cpf) or len(set(cpf)) == 1:
+    if not _CPF_RE.fullmatch(cpf) or len(set(cpf)) == 1:
         return False
     digits = [int(c) for c in cpf]
     for n in (9, 10):

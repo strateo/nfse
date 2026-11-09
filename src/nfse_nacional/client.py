@@ -7,14 +7,18 @@ anything without a usable body raises TransportError.
 from __future__ import annotations
 
 import base64
+import binascii
 import email.utils
 import gzip
+import http.client
 import io
 import json
+import math
 import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -31,12 +35,19 @@ def encode_xml(xml: bytes) -> str:
 
 
 def decode_xml(data: str) -> bytes:
-    raw = base64.b64decode(data)
-    if not raw.startswith(b"\x1f\x8b"):
-        # eventoXmlGZipB64 sometimes arrives base64-encoded twice (seen by OpenAC.Net).
-        raw = base64.b64decode(raw)
-    with gzip.GzipFile(fileobj=io.BytesIO(raw)) as f:
-        xml = f.read(MAX_XML_BYTES + 1)
+    try:
+        raw = base64.b64decode(data, validate=True)
+        if not raw.startswith(b"\x1f\x8b"):
+            # Some event responses are encoded twice.
+            raw = base64.b64decode(raw, validate=True)
+        if not raw.startswith(b"\x1f\x8b"):
+            raise ValueError("expected gzip data")
+        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as f:
+            xml = f.read(MAX_XML_BYTES + 1)
+    except (binascii.Error, ValueError, TypeError, OSError, EOFError, zlib.error) as e:
+        raise TransportError("invalid compressed XML response") from e
+    if not xml:
+        raise TransportError("empty XML response")
     if len(xml) > MAX_XML_BYTES:
         raise TransportError("decompressed XML exceeds 50 MB")
     return xml
@@ -60,7 +71,8 @@ def _retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     except ValueError:
         pass
     try:
@@ -86,13 +98,14 @@ class _Http:
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(self._base + path, data=data, method=method, headers=headers)
         try:
-            with self._opener.open(req, timeout=self._timeout) as resp:
-                return Response(resp.status, resp.read(), dict(resp.headers))
-        except urllib.error.HTTPError as e:
-            with e:
-                return Response(e.code, e.read(), dict(e.headers or {}))
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
-            raise TransportError(f"{method} {path} failed: {e}") from e
+            try:
+                resp = self._opener.open(req, timeout=self._timeout)
+            except urllib.error.HTTPError as error_response:
+                resp = error_response
+            with resp:
+                return Response(resp.status, resp.read(), dict(resp.headers or {}))
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as e:
+            raise TransportError(f"{method} request failed") from e
 
 
 def _transport_error(resp: Response, what: str) -> TransportError:
@@ -100,7 +113,7 @@ def _transport_error(resp: Response, what: str) -> TransportError:
         f"{what}: unexpected HTTP {resp.status}",
         status=resp.status,
         body=resp.body[:2000],
-        retry_after=_retry_after(resp.headers.get("Retry-After")),
+        retry_after=_retry_after(next((v for k, v in resp.headers.items() if k.lower() == "retry-after"), None)),
     )
 
 
@@ -204,7 +217,7 @@ class SefinClient:
         body = resp.json()
         if resp.status == 200 and body and isinstance(body.get("chaveAcesso"), str):
             return body["chaveAcesso"]
-        if resp.status == 404:
+        if resp.status == 404 and body is not None:
             return None
         if resp.status == 400 and body is not None:
             raise RejectionError(resp.status, parse_messages(body, "erros", "Erros", "erro"), body)
@@ -254,11 +267,25 @@ class AdnClient:
         resp = self._http.request("GET", f"/DFe/{int(last_nsu)}?{urllib.parse.urlencode(query)}")
         body = resp.json()
         # A 4xx without StatusProcessamento is a proxy/WAF page, not "caught up".
-        if body is None or "StatusProcessamento" not in body:
+        if body is None or not isinstance(body.get("StatusProcessamento"), str):
             raise _transport_error(resp, "fetch_dfe")
+        status = body["StatusProcessamento"].replace("_", "").upper()
         messages = parse_messages(body, "Erros", "erros")
-        if body["StatusProcessamento"] == "REJEICAO":
+        if status == "REJEICAO" and resp.status in (400, 422):
             raise RejectionError(resp.status, messages, body)
+        if not ((resp.status == 200 and status in ("DOCUMENTOSLOCALIZADOS", "NENHUMDOCUMENTOLOCALIZADO"))
+                or (resp.status == 404 and status == "NENHUMDOCUMENTOLOCALIZADO")):
+            raise _transport_error(resp, "fetch_dfe")
+        items = body.get("LoteDFe", [])
+        if not isinstance(items, list) or (status == "NENHUMDOCUMENTOLOCALIZADO" and items):
+            raise _transport_error(resp, "fetch_dfe")
+        for item in items:
+            if not isinstance(item, dict):
+                raise _transport_error(resp, "fetch_dfe")
+            nsu = item.get("NSU")
+            if (isinstance(nsu, bool) or not isinstance(nsu, (str, int))
+                    or not str(nsu).isascii() or not str(nsu).isdigit()):
+                raise _transport_error(resp, "fetch_dfe")
         documents = [
             DfeDocument(
                 nsu=int(item["NSU"]),
@@ -268,7 +295,7 @@ class AdnClient:
                 generated_at=item.get("DataHoraGeracao"),
                 xml=decode_xml(item["ArquivoXml"]) if item.get("ArquivoXml") else None,
             )
-            for item in body.get("LoteDFe") or []
+            for item in items
         ]
         return DfeBatch(status=body["StatusProcessamento"], documents=documents, messages=messages, raw=body)
 
