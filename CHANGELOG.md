@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 (unreleased)
+## 0.1.1 (2026-11-09)
 
 - Bind XML signature verification to the primary fiscal payload, reject duplicate
   reference IDs and unsupported algorithms, and report malformed signatures clearly.
@@ -15,7 +15,7 @@
 - Correct PDF and cursor examples and document alphanumeric-CNPJ schema limitations.
 
 Live SEFIN/ADN acceptance and issuer tax treatment remain unverified. Version 0.1.0
-remains affected by the original defects; this entry does not announce a publication.
+remains affected by the original defects; upgrade to 0.1.1 for these fixes.
 
 ## 0.1.0
 
