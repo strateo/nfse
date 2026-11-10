@@ -1,15 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Identify the bundled NT 009 release 1 explicitly as `Layout.NT009_R1`, keeping
-  `Layout.NT009` compatible, and expose exact bundled release identities.
-- Extend the Produção Restrita smoke runner with optional same-document recovery,
-  cancellation-event query, bounded ADN progression/exhaustion checks and an
-  allowlisted acceptance summary. No live acceptance is claimed.
-- Document official archive provenance, the later-layout implementation boundary
-  and the issuer-authorized acceptance procedure for issue #4.
-
 ## 0.1.2 (2026-11-09)
 
 - Enforce own-application DPS series 1–49999 (E0010) without narrowing the
