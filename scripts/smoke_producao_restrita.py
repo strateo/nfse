@@ -4,12 +4,16 @@ Steps, each reported PASS/FAIL with the SEFIN/ADN E-codes:
   1. load the certificate      4. build, validate (XSD), sign and save the DPS
   2. ADN distribution (mTLS)   5. emit (or recover) and save NFS-e XML + DANFSe PDF
   3. HEAD /dps/{id}            6. query the NFS-e back
-                               7. with --cancel: cancel it and save the event + watermarked DANFSe
+                               7. with --check-recovery: recover the same persisted DPS
+                               8. with --cancel: cancel, query the event and save a watermarked DANFSe
 
 Only Produção Restrita is reachable from here: notes issued there have no legal validity.
 The password comes from NFSE_PFX_PASSWORD or a hidden prompt and is never printed or saved.
 Every document is written to --out before it is sent. After interruption, recover the
 saved signed DPS with SefinClient.recover(); rerunning this script allocates a new number.
+Private report.json contains fiscal details. acceptance-summary.json contains only
+fixed check names, outcomes, response codes, release identity and timestamps.
+ADN pagination is bounded; exhaustion without a document batch does not prove progression.
 
     python scripts/smoke_producao_restrita.py --pfx empresa.pfx --c-loc-emi 3550308 \\
         --op-simp-nac 3 --p-tot-trib-sn 6.00 --c-trib-nac 010101 --desc "Teste de integração"
@@ -24,10 +28,13 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
+from lxml import etree
+
+from nfse_nacional import __version__
 from nfse_nacional import dps as d
 from nfse_nacional import events, schemas, signing
 from nfse_nacional.certificate import Certificate
@@ -37,27 +44,104 @@ from nfse_nacional.environment import PRODUCAO_RESTRITA as ENV
 from nfse_nacional.errors import NfseError, RejectionError, TransportError
 
 STATE_FILE = "smoke-state.json"
+ACCEPTANCE_STEPS = (
+    "certificate", "build DPS", "HEAD /dps", "emit", "GET /nfse", "recover",
+    "cancel", "GET event", "ADN distribution", "ADN progression", "ADN exhaustion",
+)
 
 
 @dataclass
 class Report:
     out: Path
     steps: list[dict] = field(default_factory=list)
+    dry_run: bool = False
+    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def record(self, step: str, ok: bool, detail: str, **extra) -> None:
         self.steps.append({"step": step, "ok": ok, "detail": detail, **extra})
-        print(f"[{'PASS' if ok else 'FAIL'}] {step}: {detail}", flush=True)
+        outcome = "NOT OBSERVED" if extra.get("outcome") == "not_observed" else ("PASS" if ok else "FAIL")
+        print(f"[{outcome}] {step}: {detail}", flush=True)
 
     def save(self) -> None:
         (self.out / "report.json").write_text(json.dumps(self.steps, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Copy only an allowlist, never descriptions, response bodies, identifiers or XML.
+        checks = []
+        for name in ACCEPTANCE_STEPS:
+            records = [step for step in self.steps if step["step"] == name]
+            if not records:
+                checks.append({"step": name, "outcome": "not_run"})
+            for step in records:
+                check = {"step": name, "outcome": "passed" if step["ok"] else "failed"}
+                if step.get("outcome") == "not_observed":
+                    check["outcome"] = "not_observed"
+                check["codes"] = [code for code in step.get("codes", [])
+                                  if isinstance(code, str) and re.fullmatch(r"[EA][0-9]{3,4}", code)]
+                status = step.get("status")
+                if type(status) is int and 100 <= status <= 599:
+                    check["http_status"] = status
+                checks.append(check)
+        summary = {
+            "format_version": 1, "package_version": __version__,
+            "environment": ENV.name, "layout": ENV.layout.value, "layout_release": ENV.layout.release,
+            "mode": "dry_run" if self.dry_run else "live",
+            "started_at": self.started_at, "finished_at": datetime.now(timezone.utc).isoformat(),
+            "checks": checks,
+        }
+        (self.out / "acceptance-summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
 def _error_detail(e: NfseError) -> tuple[str, dict]:
     if isinstance(e, RejectionError):
-        return str(e), {"codes": e.codes, "body": e.body}
+        return str(e), {"codes": e.codes, "status": e.status, "body": e.body}
     if isinstance(e, TransportError):
         return str(e), {"status": e.status, "body": e.body.decode("utf-8", "replace")}
     return str(e), {}
+
+
+def _require_same_xml(actual: bytes, expected: bytes) -> None:
+    """Fail a query/recovery check if its fiscal document differs; never echo XML."""
+    canonical = []
+    for data in (actual, expected):
+        try:
+            parser = etree.XMLParser(resolve_entities=False, no_network=True)
+            root = etree.fromstring(data, parser)
+            if root.getroottree().docinfo.doctype:
+                raise ValueError("queried fiscal XML must not contain a DTD")
+            canonical.append(etree.tostring(root, method="c14n", exclusive=True, with_comments=False))
+        except (etree.XMLSyntaxError, etree.C14NError) as e:
+            raise ValueError("queried fiscal XML cannot be parsed or canonicalized") from e
+    if canonical[0] != canonical[1]:
+        raise ValueError("queried fiscal XML differs from the saved response")
+
+
+def _check_adn(adn: AdnClient, report: Report, last_nsu: int, max_batches: int) -> bool:
+    """Read a bounded set of batches, distinguishing empty queues from progression."""
+    progressed = False
+    try:
+        for _ in range(max_batches):
+            batch = adn.fetch_dfe(last_nsu)
+            if batch.exhausted:
+                report.record("ADN distribution", True, "distribution completed")
+                report.record("ADN progression", progressed, "document batch advanced NSU" if progressed else
+                              "no document batch observed", outcome="passed" if progressed else "not_observed")
+                report.record("ADN exhaustion", True, "empty queue observed")
+                return True
+            next_nsu = batch.last_nsu
+            if next_nsu is None or next_nsu <= last_nsu:
+                raise ValueError("ADN batch does not advance NSU")
+            # These are acceptance probes, not a durable fiscal-document consumer.
+            last_nsu = next_nsu
+            progressed = True
+    except (NfseError, ValueError) as e:
+        detail, extra = _error_detail(e) if isinstance(e, NfseError) else (str(e), {})
+        report.record("ADN distribution", False, detail, **extra)
+        report.record("ADN progression", progressed, "progress before failure" if progressed else "no progress observed",
+                      outcome="passed" if progressed else "not_observed")
+        return False
+    report.record("ADN distribution", True, "batch limit reached")
+    report.record("ADN progression", progressed, "document batch advanced NSU")
+    report.record("ADN exhaustion", False, "not observed before batch limit", outcome="not_observed")
+    return True
 
 
 def _cnpj_from_certificate(cert: Certificate) -> str | None:
@@ -153,7 +237,7 @@ def build_note(args: argparse.Namespace, cnpj: str, n_dps: str) -> d.Dps:
 def run(args: argparse.Namespace) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    report = Report(out)
+    report = Report(out, dry_run=args.dry_run)
     profile = signing.SignatureProfile[args.profile]
 
     password = os.environ.get("NFSE_PFX_PASSWORD")
@@ -206,12 +290,7 @@ def run(args: argparse.Namespace) -> int:
     sefin, adn = SefinClient(ctx, ENV), AdnClient(ctx, ENV)
     failures = 0
 
-    try:
-        batch = adn.fetch_dfe(0)
-        report.record("ADN distribution", True, f"{batch.status}, {len(batch.documents)} document(s)")
-    except NfseError as e:
-        detail, extra = _error_detail(e)
-        report.record("ADN distribution", False, detail, **extra)
+    if not _check_adn(adn, report, args.adn_last_nsu, args.adn_max_batches):
         failures += 1
 
     try:
@@ -235,7 +314,8 @@ def run(args: argparse.Namespace) -> int:
         return 1
     (out / f"{stem}.nfse.xml").write_bytes(result.nfse_xml)
     alerts = [f"[{a.code}] {a.description}" for a in result.alerts]
-    report.record("emit", True, f"access key {result.access_key}", alerts=alerts)
+    report.record("emit", True, f"access key {result.access_key}", alerts=alerts,
+                  codes=[alert.code for alert in result.alerts])
     try:
         (out / f"{stem}.danfse.pdf").write_bytes(render_danfse(result.nfse_xml))
         report.record("DANFSe", True, f"{stem}.danfse.pdf")
@@ -245,13 +325,27 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         fetched = sefin.get_nfse(result.access_key)
-        report.record("GET /nfse", True, f"{len(fetched)} bytes, identical to emit response: {fetched == result.nfse_xml}")
-    except NfseError as e:
-        detail, extra = _error_detail(e)
+        _require_same_xml(fetched, result.nfse_xml)
+        report.record("GET /nfse", True, "fiscal XML matches the saved emission response")
+    except (NfseError, ValueError, etree.XMLSyntaxError) as e:
+        detail, extra = _error_detail(e) if isinstance(e, NfseError) else ("query XML did not match", {})
         report.record("GET /nfse", False, detail, **extra)
         failures += 1
 
+    if args.check_recovery:
+        try:
+            recovered = sefin.recover((out / f"{stem}.dps.xml").read_bytes(), note.id)
+            if recovered.access_key != result.access_key:
+                raise ValueError("recovery returned a different access key")
+            _require_same_xml(recovered.nfse_xml, result.nfse_xml)
+            report.record("recover", True, "same persisted DPS resolves to the saved NFS-e")
+        except (NfseError, ValueError, etree.XMLSyntaxError) as e:
+            detail, extra = _error_detail(e) if isinstance(e, NfseError) else ("recovery did not match the saved response", {})
+            report.record("recover", False, detail, **extra)
+            failures += 1
+
     if args.cancel:
+        cancel_step = "cancel"
         try:
             event = events.build_cancellation(
                 result.access_key, events.CANCEL_REASON_ISSUE_ERROR,
@@ -263,14 +357,19 @@ def run(args: argparse.Namespace) -> int:
             (out / f"{stem}.cancel.request.xml").write_bytes(signed_event)
             event_xml = sefin.register_event(result.access_key, signed_event)
             (out / f"{stem}.cancel.event.xml").write_bytes(event_xml)
-            (out / f"{stem}.danfse.cancelled.pdf").write_bytes(render_danfse(result.nfse_xml, Watermark.CANCELLED))
             report.record("cancel", True, "event 101101 registered")
+            cancel_step = "GET event"
+            queried_event = sefin.get_event(result.access_key, events.CANCELLATION)
+            _require_same_xml(queried_event, event_xml)
+            report.record("GET event", True, "queried event matches the registration response")
+            cancel_step = "cancelled DANFSe"
+            (out / f"{stem}.danfse.cancelled.pdf").write_bytes(render_danfse(result.nfse_xml, Watermark.CANCELLED))
         except NfseError as e:
             detail, extra = _error_detail(e)
-            report.record("cancel", False, detail, **extra)
+            report.record(cancel_step, False, detail, **extra)
             failures += 1
-        except ValueError as e:
-            report.record("cancel", False, str(e))
+        except (ValueError, etree.XMLSyntaxError):
+            report.record(cancel_step, False, "cancellation/query validation failed")
             failures += 1
 
     report.save()
@@ -313,9 +412,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--n-dps", help="force a DPS number (default: next from the state file)")
     p.add_argument("--profile", default="RSA_SHA1", choices=[x.name for x in signing.SignatureProfile])
     p.add_argument("--cancel", action="store_true", help="cancel the note after issuing it")
+    p.add_argument("--check-recovery", action="store_true", help="recover the same saved DPS after emission and compare its NFS-e")
+    p.add_argument("--adn-last-nsu", type=int, default=0, help="initial ADN cursor (default 0)")
+    p.add_argument("--adn-max-batches", type=int, default=10, help="bounded ADN requests; no retry waits (default 10)")
     p.add_argument("--dry-run", action="store_true", help="build, sign and save the DPS without network calls")
     p.add_argument("--out", default="smoke-output", help="directory for documents, report and number state")
     args = p.parse_args(argv)
+    if args.adn_last_nsu < 0 or not 1 <= args.adn_max_batches <= 100:
+        p.error("--adn-last-nsu must be nonnegative and --adn-max-batches must be between 1 and 100")
     if args.op_simp_nac == "3" and not args.p_tot_trib_sn:
         p.error("--p-tot-trib-sn is required for ME/EPP (E0712)")
     if args.op_simp_nac == "1" and not args.p_tot_trib:

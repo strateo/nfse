@@ -143,6 +143,11 @@ It only ever targets Produção Restrita, where notes have no legal validity. Th
 
 Output:
 - Documents, `report.json` (each step with its E-codes) and the DPS number state go to `smoke-output/`.
+- `--check-recovery` verifies recovery of the same saved DPS. With `--cancel`, the
+  script also queries the registered event. ADN requests are bounded and distinguish
+  NSU progression from queue exhaustion. `acceptance-summary.json` excludes
+  identifiers, XML and free-text server details; other artifacts and logs remain
+  private. See the [acceptance procedure and supported layouts](docs/acceptance.md).
 - Every signed document is saved before it is sent.
 - `--dry-run` stops before the network.
 - `--profile RSA_SHA256` tests the alternative signature profile.
@@ -150,7 +155,8 @@ Output:
 The smoke counter is a single-operator test helper, not a concurrent production
 allocator. A real A1/Produção Restrita run is an external fiscal action requiring its
 own approval. Its XSD dry run does not prove CEP consistency, account authority or tax
-classification. All automated smoke tests use throwaway PKI and stop before network.
+classification. Automated smoke tests use throwaway PKI and dry runs or mocked
+clients; they make no government requests.
 
 ## Development
 
@@ -159,7 +165,9 @@ classification. All automated smoke tests use throwaway PKI and stop before netw
 Status checked on 2026-11-09: the official October 29 notice keeps NT 004/007 in
 production and targets NT 009 releases 1 through 3 for production on 2026-12-01,
 with staged deployment and a formal schedule to follow. `PRODUCAO` still uses
-the earlier layout; `Layout.NT009` covers only test release 1. This version does
+the earlier layout; `Layout.NT009_R1` (also available as `Layout.NT009`) covers only
+test release 1. `environment.layout.release` identifies the exact bundled package.
+This version does
 not implement the later NT 009 v1.01 adjustments or switch layouts by date.
 Production deployment requires checking the schedule and matching official
 bundle; compatibility after the transition has not been established.
