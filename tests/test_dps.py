@@ -148,6 +148,17 @@ class LayoutTest(unittest.TestCase):
 
 
 class GuardTest(unittest.TestCase):
+    def test_extreme_finite_iss_rates_keep_the_maximum_rate_error(self):
+        for rate in (Decimal("1E+26"), Decimal("1E+27"), 10 ** 27, str(10 ** 27)):
+            with self.subTest(rate=rate):
+                self.assert_rejected(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN="2", pAliq=rate)), "E0595")
+
+    def test_non_finite_iss_rates_fail_with_value_error_in_both_layouts(self):
+        for rate in (Decimal("NaN"), Decimal("sNaN"), Decimal("Infinity"), Decimal("-Infinity")):
+            for env in ENVIRONMENTS:
+                with self.subTest(rate=rate, env=env.name), self.assertRaisesRegex(ValueError, "finite"):
+                    d.build_dps(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN="2", pAliq=rate)), env)
+
     def assert_rejected(self, dps, fragment):
         for env in ENVIRONMENTS:
             with self.subTest(env=env.name):

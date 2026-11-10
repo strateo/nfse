@@ -8,8 +8,10 @@ proof. ``producao_restrita`` is the 2026-10-20 (NT 009) bundle.
 
 from __future__ import annotations
 
+from _thread import LockType
 from functools import cache
 from importlib import resources
+from threading import Lock
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
@@ -67,12 +69,12 @@ class _OfficialSchemaFixes(etree.Resolver):
 
 
 @cache
-def _schema(layout: Layout, root: str) -> etree.XMLSchema:
+def _schema(layout: Layout, root: str) -> tuple[etree.XMLSchema, LockType]:
     path = resources.files("nfse_nacional") / "schemas" / _BUNDLES[layout] / _ROOTS[root]
     with resources.as_file(path) as file:
         parser = etree.XMLParser(no_network=True, resolve_entities=True)
         parser.resolvers.add(_OfficialSchemaFixes())
-        return etree.XMLSchema(etree.parse(str(file), parser))
+        return etree.XMLSchema(etree.parse(str(file), parser)), Lock()
 
 
 def validate(element: etree._Element, layout: Layout) -> None:
@@ -80,6 +82,9 @@ def validate(element: etree._Element, layout: Layout) -> None:
     name = etree.QName(element).localname
     if name not in _ROOTS:
         raise ValueError(f"no schema for root element {name!r}")
-    schema = _schema(layout, name)
-    if not schema.validate(element):
-        raise SchemaValidationError([f"line {e.line}: {e.message}" for e in schema.error_log])
+    schema, lock = _schema(layout, name)
+    # The cached validator has a mutable error_log; keep each result with its own diagnostics.
+    # ceiling: calls are serial per schema; use thread-local copies if contention warrants it.
+    with lock:
+        if not schema.validate(element):
+            raise SchemaValidationError([f"line {e.line}: {e.message}" for e in schema.error_log])

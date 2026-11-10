@@ -376,9 +376,15 @@ def _split(text: str, width: float = FULL - 0.15, size: float = 7) -> list[str]:
             else:
                 line = candidate
             while measure(line) > limit and len(line) > 1:
-                cut = len(line) - 1
-                while cut > 1 and measure(line[:cut] + "-") > limit:
-                    cut -= 1
+                # Prefix advances are monotone; avoid rescanning every oversized prefix.
+                low, high, cut = 1, len(line) - 1, 1
+                while low <= high:
+                    middle = (low + high) // 2
+                    if measure(line[:middle] + "-") <= limit:
+                        cut = middle
+                        low = middle + 1
+                    else:
+                        high = middle - 1
                 lines.append(line[:cut] + "-")
                 line = line[cut:]
         lines.append(line)

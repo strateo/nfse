@@ -4,6 +4,7 @@ import unittest
 import zlib
 from dataclasses import replace
 from decimal import Decimal
+from unittest import mock
 
 from lxml import etree
 
@@ -12,6 +13,7 @@ from nfse_nacional import danfse, schemas, signing
 from nfse_nacional.certificate import Certificate
 from nfse_nacional import dps as d
 from nfse_nacional.environment import PRODUCAO, PRODUCAO_RESTRITA, Environment
+from nfse_nacional.pdf_fonts import FontSet, activate, deactivate
 from test_dps import ACCESS_KEY, me_epp_dps
 
 N = d.NFSE_NS
@@ -97,6 +99,27 @@ SAMPLE = me_epp_dps(
 
 
 class DanfseTest(unittest.TestCase):
+    def test_long_unbroken_description_has_bounded_measurement_work(self):
+        fonts = FontSet()
+        measure = fonts.width
+        calls = 0
+
+        def bounded_measure(*args):
+            nonlocal calls
+            calls += 1
+            self.assertLessEqual(calls, 1000, "long words must not scan every possible prefix")
+            return measure(*args)
+
+        token = activate(fonts)
+        try:
+            with mock.patch.object(fonts, "width", side_effect=bounded_measure):
+                lines = danfse._split("X" * 2000)
+        finally:
+            deactivate(token)
+        self.assertEqual("".join(line.removesuffix("-") for line in lines), "X" * 2000)
+        for line in lines:
+            self.assertLessEqual(measure(line, danfse.REGULAR, 7), (danfse.FULL - 0.15) * danfse.cm)
+
     def test_fixture_is_schema_valid(self):
         for env in (PRODUCAO, PRODUCAO_RESTRITA):
             with self.subTest(env=env.name):
