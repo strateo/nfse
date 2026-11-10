@@ -287,7 +287,9 @@ def _validate(dps: Dps, dh_emi: datetime) -> None:
     if dps.tribMun.pAliq is not None:
         if isinstance(dps.tribMun.pAliq, float):
             raise TypeError("use Decimal, int or str for amounts, not float")
-        _check(Decimal(dps.tribMun.pAliq) <= 5, "pAliq above 5% (E0595); it is a percentage, not a fraction")
+        rate = Decimal(dps.tribMun.pAliq)
+        _check(rate.is_finite(), "pAliq must be a finite number")
+        _check(rate <= 5, "pAliq above 5% (E0595); it is a percentage, not a fraction")
     if p.opSimpNac == OP_SIMP_NAC_ME_EPP and p.regApTribSN == "1":
         # ceiling: no BM group is modelled; revisit the active-municipality benefit
         # exceptions before adding BM support. Inactive municipalities use E0631/E0628.
