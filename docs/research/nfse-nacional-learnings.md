@@ -19,11 +19,30 @@ are Excel rows. The level legend is in D2, and the rule level is column J.
 | E0015, level 1 | 150 | 223 | Competence must be no later than emission. The builder compares against the same Brasília timestamp serialized as dhEmi. |
 | E0617, level 3 | 509 | 657 | pAliq is forbidden for a non-optante when the ISS-incidence municipality agreement is active at competence. |
 | E0625, level 3 | 512 | 660 | pAliq is forbidden when all five conditions hold: ME/EPP, ISS assessed through SN, active incidence-municipality agreement at competence, no exemption/differentiated-rate municipal benefit, and no ISS withholding. |
+| E0621, level 3 | 511 | 659 | Under the same active-agreement/no-exception benefit conditions as E0625, withholding (2 or 3) requires pAliq, with a minimum of 1.80%. |
+| E0628, level 3 | 513 | 661 | ME/EPP with ISS assessed through SN and withholding (2 or 3) requires pAliq of at least 1.80% when the incidence municipality's agreement is not active. |
+| E0631, level 3 | 514 | 662 | ME/EPP with ISS assessed through SN must omit pAliq without withholding when the incidence municipality's agreement is not active. |
 
-Level 3 rules depend on municipal legislation configured in the national system.
-The current builder has neither agreement-status nor benefit context and must
-not invent it. Explicit pAliq remains preserved; the example omits it. The series
-restriction belongs to own-application construction, not structural Id lookup.
+Level 3 rules depend on municipal legislation configured in the national system,
+but complementary rules can cover both active and inactive agreements. The
+previous analysis of E0625 alone missed E0631. In the current builder there is
+no BM group, so no exemption/differentiated-rate benefit is supplied. Together,
+E0625/E0631 forbid a rate without withholding for ME/EPP with regApTribSN=1;
+E0621/E0628 require it with withholding, with a 1.80% minimum. The builder now
+guards these combinations without guessing agreement status. Any future BM
+support must revisit the active-agreement benefit exceptions. E0617 for
+non-optantes remains dependent on municipal configuration. Caller input is
+rejected when invalid, never silently stripped. The series restriction belongs
+to own-application construction, not structural Id lookup.
+
+## Midnight timestamp boundary
+
+The default emission timestamp is backdated by five seconds. A current-day
+competence can therefore follow that timestamp's Brasília date during the first
+five seconds after midnight. E0015 deliberately fails closed in that window;
+schedule after it or retry rather than silently changing the fiscal competence
+or removing the clock-skew margin. Regression coverage simulates both sides of
+the boundary without making network requests.
 
 ## NT 009 migration boundary
 

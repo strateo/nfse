@@ -64,10 +64,19 @@ the [official documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentac
 (E0010). Competence must not be after the Brasília emission date (E0015).
 Identifiers for other channels remain available through `dps_id`.
 
-The example omits `pAliq`. Rules E0617/E0625 depend on the incidence municipality's
-configuration and, for E0625, municipal benefits and withholding. Check those
-parameters before supplying a rate: the library preserves your value and does
-not determine its municipal admissibility.
+The example omits `pAliq`. For ME/EPP with ISS assessed through Simples
+(`regApTribSN=1`), the current model, which cannot emit the municipal-benefit
+`BM` group, requires omitting the rate without withholding (E0625/E0631).
+With withholding (`tpRetISSQN=2` or `3`), it requires a rate between 1.80% and
+5.00% (E0621/E0628 and E0595). Invalid values are rejected, never silently removed.
+Other municipal rules, such as E0617 for non-optantes, still require municipality
+parameter lookup; offline validation does not guarantee SEFIN acceptance.
+
+The default `dhEmi` is backdated by five seconds to allow for SEFIN clock skew.
+During the first five seconds after Brasília midnight, this can fall on the
+previous day and reject today's `dCompet` (E0015). Schedule issuance after this
+window or retry; the library does not silently change competence or remove the
+safety margin.
 
 ```python
 from datetime import date
