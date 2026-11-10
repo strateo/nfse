@@ -17,6 +17,8 @@ are Excel rows. The level legend is in D2, and the rule level is column J.
 | --- | --- | --- | --- |
 | E0010, level 1 | 147 | 220 | Own-application series are 00001–49999. Mobile uses 50000–69999; web 70000–79999; manual web transcription 80000–89999. |
 | E0015, level 1 | 150 | 223 | Competence must be no later than emission. The builder compares against the same Brasília timestamp serialized as dhEmi. |
+| E0580, level 2 | 493 | 638 | Immunity, service export and non-incidence (tribISSQN 2/3/4) forbid ISS withholding. |
+| E0588, level 2 | 495 | 640 | A special tax regime forbids ISS withholding. Production lists regimes 1–6 and 9; NT 009 lists 1–6. |
 | E0617, level 3 | 509 | 657 | pAliq is forbidden for a non-optante when the ISS-incidence municipality agreement is active at competence. |
 | E0625, level 3 | 512 | 660 | pAliq is forbidden when all five conditions hold: ME/EPP, ISS assessed through SN, active incidence-municipality agreement at competence, no exemption/differentiated-rate municipal benefit, and no ISS withholding. |
 | E0621, level 3 | 511 | 659 | Under the same active-agreement/no-exception benefit conditions as E0625, withholding (2 or 3) requires pAliq, with a minimum of 1.80%. |
@@ -34,6 +36,11 @@ support must revisit the active-agreement benefit exceptions. E0617 for
 non-optantes remains dependent on municipal configuration. Caller input is
 rejected when invalid, never silently stripped. The series restriction belongs
 to own-application construction, not structural Id lookup.
+
+Within the new ME/EPP/SN-assessed withholding branch, E0580/E0588 are checked
+before requiring a rate. Otherwise the error would advise adding a rate to a
+document whose withholding is itself forbidden. This precedence fix does not
+extend the new rate policy to other assessment regimes or non-optantes.
 
 ## Midnight timestamp boundary
 

@@ -7,6 +7,8 @@
   withholding, require it with withholding, and enforce the 1.80% minimum.
 - Correct the prior municipal-rule analysis using the complementary inactive-
   municipality rules; preserve other assessment regimes' existing behavior.
+- Report forbidden withholding (E0580/E0588) before asking for a missing rate
+  within the new SN-assessed ISS branch.
 - Document the default timestamp's five-second midnight window and distinguish
   public fiscal research from excluded private business research.
 

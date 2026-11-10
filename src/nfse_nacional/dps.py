@@ -295,6 +295,9 @@ def _validate(dps: Dps, dh_emi: datetime) -> None:
         if m.tpRetISSQN == "1":
             _check(m.pAliq is None, "omit pAliq for SN-assessed ISS without withholding (E0625/E0631)")
         elif m.tpRetISSQN in ("2", "3"):
+            _check(m.tribISSQN not in ("2", "3", "4"),
+                   "omit ISS withholding for immunity, service export or non-incidence (E0580)")
+            _check(p.regEspTrib == "0", "omit ISS withholding under a special tax regime (E0588)")
             _check(m.pAliq is not None, "pAliq is required for SN-assessed ISS with withholding (E0621/E0628)")
             _check(Decimal(m.pAliq) >= Decimal("1.80"),
                    "withheld SN-assessed ISS needs pAliq of at least 1.80% (E0621/E0628)")

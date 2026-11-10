@@ -168,6 +168,20 @@ class GuardTest(unittest.TestCase):
                         schemas.validate(root, env.layout)
                         self.assertEqual(text(root, "n:infDPS/n:valores/n:trib/n:tribMun/n:pAliq"), str(rate))
 
+    def test_forbidden_sn_withholding_is_reported_before_a_missing_rate(self):
+        base = me_epp_dps()
+        for retention in ("2", "3"):
+            for rate in (None, Decimal("2.50")):
+                for treatment in ("2", "3", "4"):
+                    with self.subTest(retention=retention, rate=rate, treatment=treatment):
+                        tax = d.MunicipalTax(tribISSQN=treatment, tpImunidade="1" if treatment == "2" else None,
+                                             tpRetISSQN=retention, pAliq=rate)
+                        self.assert_rejected(replace(base, tribMun=tax), "E0580")
+                for regime in ("1", "2", "3", "4", "5", "6"):
+                    with self.subTest(retention=retention, rate=rate, regime=regime):
+                        tax = d.MunicipalTax(tpRetISSQN=retention, pAliq=rate)
+                        self.assert_rejected(replace(base, prest=replace(base.prest, regEspTrib=regime), tribMun=tax), "E0588")
+
     def test_other_simples_assessment_regimes_are_not_given_sn_iss_guards(self):
         for regime in ("2", "3"):
             for tax in (d.MunicipalTax(pAliq=Decimal("2.50")), d.MunicipalTax(tpRetISSQN="2")):
