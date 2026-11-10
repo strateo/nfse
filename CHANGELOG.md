@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 (2026-11-10)
+
+- Identify the bundled NT 009 release 1 with Layout.NT009_R1 and exact release
+  metadata, preserving the existing Layout.NT009 compatibility name.
+- Add optional persisted-document recovery, cancellation-event query, bounded
+  ADN progression/exhaustion probes and a sanitized acceptance summary to the
+  Produção Restrita smoke runner. Document the issuer-authorized test procedure.
 
 - Keep concurrent XSD validation diagnostics bound to their own document.
 - Normalize oversized ADN NSU conversion failures as TransportError and reject

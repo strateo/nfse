@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/strateo/nfse/actions/workflows/tests.yml"><img src="https://github.com/strateo/nfse/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.2"><img src="https://img.shields.io/badge/release-v0.1.2-104A58" alt="v0.1.2"></a>
+  <a href="https://github.com/strateo/nfse/releases/tag/v0.1.3"><img src="https://img.shields.io/badge/release-v0.1.3-104A58" alt="v0.1.3"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-104A58" alt="MIT"></a>
 </p>
 
