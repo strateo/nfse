@@ -5,6 +5,7 @@ import gzip
 import http.client
 import json
 import ssl
+import sys
 import unittest
 from dataclasses import replace
 from decimal import Decimal
@@ -26,6 +27,20 @@ from nfse_nacional.danfse import render_danfse
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_oversized_nsu_conversion_is_a_transport_error(self):
+        limit = sys.get_int_max_str_digits()
+        if not limit or limit > 10000:
+            self.skipTest("runtime integer conversion bound is disabled or outside the bounded probe")
+        client = AdnClient(ssl.create_default_context(), PRODUCAO_RESTRITA)
+        for digits in {limit + 1, max(limit + 1, 5000), max(limit + 1, 5001)}:
+            body = {'StatusProcessamento': 'DOCUMENTOS_LOCALIZADOS', 'LoteDFe': [{'NSU': '9' * digits}]}
+            with self.subTest(digits=digits), mock.patch.object(client._http, 'request', return_value=Response(
+                    200, json.dumps(body).encode(), {})):
+                with self.assertRaises(TransportError) as ctx:
+                    client.fetch_dfe(0)
+                self.assertIsInstance(ctx.exception.__cause__, ValueError)
+                self.assertNotIn('9' * 30, str(ctx.exception))
+
     def test_adn_null_empty_queue_is_exhausted(self):
         client = AdnClient(ssl.create_default_context(), PRODUCAO_RESTRITA)
         for status in (200, 404):

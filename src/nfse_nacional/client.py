@@ -282,6 +282,7 @@ class AdnClient:
             raise _transport_error(resp, "fetch_dfe")
         if status == "DOCUMENTOSLOCALIZADOS" and not items:
             raise _transport_error(resp, "fetch_dfe: documents located without documents")
+        nsus = []
         for item in items:
             if not isinstance(item, dict):
                 raise _transport_error(resp, "fetch_dfe")
@@ -289,18 +290,22 @@ class AdnClient:
             if (isinstance(nsu, bool) or not isinstance(nsu, (str, int))
                     or not str(nsu).isascii() or not str(nsu).isdigit()):
                 raise _transport_error(resp, "fetch_dfe")
-        if items and max(int(item["NSU"]) for item in items) <= int(last_nsu):
+            try:
+                nsus.append(int(nsu))
+            except ValueError as e:
+                raise _transport_error(resp, "fetch_dfe: invalid NSU") from e
+        if nsus and max(nsus) <= int(last_nsu):
             raise _transport_error(resp, "fetch_dfe: batch does not advance NSU")
         documents = [
             DfeDocument(
-                nsu=int(item["NSU"]),
+                nsu=nsu,
                 access_key=item.get("ChaveAcesso"),
                 document_type=item.get("TipoDocumento"),
                 event_type=item.get("TipoEvento"),
                 generated_at=item.get("DataHoraGeracao"),
                 xml=decode_xml(item["ArquivoXml"]) if item.get("ArquivoXml") else None,
             )
-            for item in items
+            for item, nsu in zip(items, nsus)
         ]
         return DfeBatch(status=body["StatusProcessamento"], documents=documents, messages=messages, raw=body)
 
