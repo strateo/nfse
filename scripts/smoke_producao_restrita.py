@@ -293,7 +293,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--c-nbs", help="NBS code (9 digits)")
     p.add_argument("--desc", default="Serviço de teste de integração - sem valor fiscal", help="xDescServ")
     p.add_argument("--v-serv", default="1.00", help="service value (default 1.00)")
-    p.add_argument("--p-aliq", help="ISS rate %% (check municipal configuration and benefits: E0617/E0625)")
+    p.add_argument("--p-aliq", help="ISS rate %% (omit for ME/EPP regApTribSN=1 without withholding: E0625/E0631; other regimes depend on municipal rules)")
     p.add_argument("--toma-cnpj", help="Brazilian company recipient CNPJ")
     p.add_argument("--toma-cpf", help="Brazilian individual recipient CPF")
     p.add_argument("--toma-nif", help="foreign recipient NIF")

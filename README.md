@@ -64,10 +64,19 @@ suposição. Confira os pacotes na [documentação oficial](https://www.gov.br/n
 (E0010). A competência não pode ser posterior à data de emissão em Brasília
 (E0015). Os identificadores de outros canais continuam disponíveis em `dps_id`.
 
-O exemplo omite `pAliq`. As regras E0617/E0625 dependem da configuração do
-município de incidência e, no caso de E0625, também de benefícios municipais e
-retenção. Verifique esses parâmetros antes de informar a alíquota: a biblioteca
-preserva o valor fornecido e não determina sua admissibilidade municipal.
+O exemplo omite `pAliq`. Para ME/EPP com ISS apurado pelo Simples
+(`regApTribSN=1`), o modelo atual, que não oferece o grupo de benefício municipal
+`BM`, exige omitir a alíquota sem retenção (E0625/E0631). Com retenção
+(`tpRetISSQN=2` ou `3`), exige uma alíquota entre 1,80% e 5,00% (E0621/E0628 e
+E0595). Valores inválidos são rejeitados, nunca removidos silenciosamente.
+As demais regras municipais, como E0617 para não optantes, ainda exigem consultar
+a parametrização do município; a validação local não garante aceitação pela SEFIN.
+
+Por padrão, `dhEmi` é retroagido em cinco segundos para compensar diferença de
+relógio com a SEFIN. Nos primeiros cinco segundos após a meia-noite em Brasília,
+isso pode cair no dia anterior e rejeitar `dCompet` do dia atual (E0015).
+Agende a emissão após essa janela ou tente novamente; a biblioteca não altera
+silenciosamente a competência nem remove a margem de segurança.
 
 O exemplo usa dados fictícios e o ambiente de Produção Restrita. Implemente `next_number()` com um contador atômico por CNPJ e série e `save_pending()` com armazenamento durável antes de enviar documentos. Os nomes e comentários de código são mantidos iguais nas duas versões deste README.
 

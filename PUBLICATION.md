@@ -1,9 +1,10 @@
 # Publication checklist
 
-This is a separate public-release candidate. The original working directory has
-not been changed. Private integration modules and tests, internal research,
-local environments and package build metadata were excluded. No Git history,
-remote, credentials or live fiscal output were copied.
+The initial public export excluded private integration modules and tests,
+internal business research, local environments and package build metadata.
+No private Git history, remote, credentials or live fiscal output were copied.
+`docs/research/` contains public fiscal-specification findings and official sources,
+added to this repository after that initial export.
 
 The project code is licensed under MIT; see LICENSE. Third-party material retains
 its own terms.

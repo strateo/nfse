@@ -288,6 +288,19 @@ def _validate(dps: Dps, dh_emi: datetime) -> None:
         if isinstance(dps.tribMun.pAliq, float):
             raise TypeError("use Decimal, int or str for amounts, not float")
         _check(Decimal(dps.tribMun.pAliq) <= 5, "pAliq above 5% (E0595); it is a percentage, not a fraction")
+    if p.opSimpNac == OP_SIMP_NAC_ME_EPP and p.regApTribSN == "1":
+        # ceiling: no BM group is modelled; revisit the active-municipality benefit
+        # exceptions before adding BM support. Inactive municipalities use E0631/E0628.
+        m = dps.tribMun
+        if m.tpRetISSQN == "1":
+            _check(m.pAliq is None, "omit pAliq for SN-assessed ISS without withholding (E0625/E0631)")
+        elif m.tpRetISSQN in ("2", "3"):
+            _check(m.tribISSQN not in ("2", "3", "4"),
+                   "omit ISS withholding for immunity, service export or non-incidence (E0580)")
+            _check(p.regEspTrib == "0", "omit ISS withholding under a special tax regime (E0588)")
+            _check(m.pAliq is not None, "pAliq is required for SN-assessed ISS with withholding (E0621/E0628)")
+            _check(Decimal(m.pAliq) >= Decimal("1.80"),
+                   "withheld SN-assessed ISS needs pAliq of at least 1.80% (E0621/E0628)")
     _check(dps.serv.cTribMun != "000", "omit cTribMun instead of sending '000' (E0315)")
     _check(
         (dps.serv.cLocPrestacao is None) != (dps.serv.cPaisPrestacao is None),

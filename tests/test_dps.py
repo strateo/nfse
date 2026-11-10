@@ -54,8 +54,8 @@ class DpsXsdTest(unittest.TestCase):
             self.assertIsNone(root.find("n:infDPS/n:valores/n:trib/n:tribMun/n:pAliq", NS))
 
     def test_explicit_rate_is_preserved_for_municipal_validation(self):
-        # E0617/E0625 also depend on municipal configuration unavailable offline.
-        base = me_epp_dps(tribMun=d.MunicipalTax(pAliq=Decimal("2.50")))
+        # Non-optante E0617 still needs municipality status; retained SN requires a rate.
+        base = me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN="2", pAliq=Decimal("2.50")))
         non_optante = replace(base, prest=d.Provider(opSimpNac="1", CNPJ="11222333000181"),
                               totTrib=d.TotalTax.percent(Decimal("0"), Decimal("0"), Decimal("0")))
         for note in (base, non_optante):
@@ -154,6 +154,55 @@ class GuardTest(unittest.TestCase):
                 with self.assertRaises(ValueError) as ctx:
                     d.build_dps(dps, env)
                 self.assertIn(fragment, str(ctx.exception))
+
+    def test_simples_iss_rate_rules_in_both_layouts(self):
+        self.assert_rejected(me_epp_dps(tribMun=d.MunicipalTax(pAliq=Decimal("2.50"))), "E0625/E0631")
+        for retention in ("2", "3"):
+            for rate in (None, Decimal("1.79")):
+                with self.subTest(retention=retention, rate=rate):
+                    self.assert_rejected(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN=retention, pAliq=rate)), "E0621/E0628")
+            for rate in (Decimal("1.80"), Decimal("2.50"), Decimal("5.00")):
+                for env in ENVIRONMENTS:
+                    with self.subTest(retention=retention, rate=rate, env=env.name):
+                        root = d.build_dps(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN=retention, pAliq=rate)), env)
+                        schemas.validate(root, env.layout)
+                        self.assertEqual(text(root, "n:infDPS/n:valores/n:trib/n:tribMun/n:pAliq"), str(rate))
+
+    def test_forbidden_sn_withholding_is_reported_before_a_missing_rate(self):
+        base = me_epp_dps()
+        for retention in ("2", "3"):
+            for rate in (None, Decimal("2.50")):
+                for treatment in ("2", "3", "4"):
+                    with self.subTest(retention=retention, rate=rate, treatment=treatment):
+                        tax = d.MunicipalTax(tribISSQN=treatment, tpImunidade="1" if treatment == "2" else None,
+                                             tpRetISSQN=retention, pAliq=rate)
+                        self.assert_rejected(replace(base, tribMun=tax), "E0580")
+                for regime in ("1", "2", "3", "4", "5", "6"):
+                    with self.subTest(retention=retention, rate=rate, regime=regime):
+                        tax = d.MunicipalTax(tpRetISSQN=retention, pAliq=rate)
+                        self.assert_rejected(replace(base, prest=replace(base.prest, regEspTrib=regime), tribMun=tax), "E0588")
+
+    def test_other_simples_assessment_regimes_are_not_given_sn_iss_guards(self):
+        for regime in ("2", "3"):
+            for tax in (d.MunicipalTax(pAliq=Decimal("2.50")), d.MunicipalTax(tpRetISSQN="2")):
+                for env in ENVIRONMENTS:
+                    with self.subTest(regime=regime, retention=tax.tpRetISSQN, env=env.name):
+                        note = me_epp_dps(prest=replace(me_epp_dps().prest, regApTribSN=regime), tribMun=tax)
+                        schemas.validate(d.build_dps(note, env), env.layout)
+
+    def test_backdating_window_fails_closed_without_changing_competence(self):
+        midnight = datetime(2026, 11, 4, tzinfo=d.BRASILIA)
+        for env in ENVIRONMENTS:
+            with self.subTest(env=env.name):
+                with mock.patch.object(d, "datetime", wraps=datetime) as clock:
+                    clock.now.return_value = midnight + timedelta(seconds=2)
+                    with self.assertRaisesRegex(ValueError, "E0015"):
+                        d.build_dps(me_epp_dps(dhEmi=None, dCompet=midnight.date()), env)
+                with mock.patch.object(d, "datetime", wraps=datetime) as clock:
+                    clock.now.return_value = midnight + timedelta(seconds=6)
+                    root = d.build_dps(me_epp_dps(dhEmi=None, dCompet=midnight.date()), env)
+                self.assertEqual(text(root, "n:infDPS/n:dCompet"), "2026-11-04")
+                self.assertEqual(text(root, "n:infDPS/n:dhEmi"), "2026-11-04T00:00:01-03:00")
 
     def test_own_application_series_range(self):
         for serie in ("0", "00000", "50000", "69999", "70000", "79999", "80000", "89999"):

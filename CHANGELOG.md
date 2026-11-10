@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Compose E0625/E0631 and E0621/E0628 for the current ME/EPP model with
+  SN-assessed ISS and no municipal-benefit group: forbid a rate without
+  withholding, require it with withholding, and enforce the 1.80% minimum.
+- Correct the prior municipal-rule analysis using the complementary inactive-
+  municipality rules; preserve other assessment regimes' existing behavior.
+- Report forbidden withholding (E0580/E0588) before asking for a missing rate
+  within the new SN-assessed ISS branch.
+- Document the default timestamp's five-second midnight window and distinguish
+  public fiscal research from excluded private business research.
+
 ## 0.1.2 (2026-11-09)
 
 - Enforce own-application DPS series 1–49999 (E0010) without narrowing the
