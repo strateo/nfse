@@ -153,6 +153,13 @@ O script se limita à Produção Restrita, cujas notas não têm validade juríd
 
 Os documentos, o `report.json` com os códigos de erro de cada etapa e o estado da numeração são gravados em `smoke-output/`. Cada documento assinado é salvo antes do envio. Use `--dry-run` para parar antes de qualquer chamada de rede e `--profile RSA_SHA256` para testar o perfil de assinatura alternativo.
 
+Use `--check-recovery` para conferir a recuperação da mesma DPS salva. Com
+`--cancel`, o script também consulta o evento registrado. A distribuição pelo ADN
+tem limite de lotes e distingue progressão do NSU de fila esgotada. O arquivo
+`acceptance-summary.json` registra resultados sem identificadores, XML ou textos
+livres do servidor; os demais arquivos e os logs continuam privados. Confira o
+[procedimento de aceitação e os leiautes suportados](docs/acceptance.md) (em inglês).
+
 O contador desse script atende testes com um único operador; ele não é um alocador concorrente para produção. Uma execução real com A1 exige autorização do emissor. A validação XSD local não comprova consistência de CEP, poderes de representação nem classificação tributária. Os testes automatizados do script usam certificados temporários e param antes da rede.
 
 ## Desenvolvimento
@@ -162,7 +169,9 @@ O contador desse script atende testes com um único operador; ele não é um alo
 Situação verificada em 09/11/2026: o comunicado oficial de 29/10 mantém NT 004/007
 em produção e prevê os releases 1 a 3 da NT 009 em produção em 01/12/2026, com
 implantação gradual e cronograma formal a publicar. `PRODUCAO` ainda usa o leiaute
-anterior, e `Layout.NT009` representa somente o release 1 de testes. Esta versão
+anterior, e `Layout.NT009_R1` (também disponível pelo nome `Layout.NT009`)
+representa somente o release 1 de testes. `environment.layout.release` identifica
+o pacote exato incluído. Esta versão
 não implementa os ajustes posteriores da NT 009 v1.01 nem muda de leiaute pela data.
 Uma implantação em produção exige conferir o cronograma e o pacote oficial
 correspondente; a compatibilidade após a transição não está comprovada.
