@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Keep concurrent XSD validation diagnostics bound to their own document.
+- Normalize oversized ADN NSU conversion failures as TransportError and reject
+  non-finite ISS rates before fiscal comparisons.
+- Bound long-word wrapping work in DANFSe PDFs while preserving greedy line breaks.
+
 - Compose E0625/E0631 and E0621/E0628 for the current ME/EPP model with
   SN-assessed ISS and no municipal-benefit group: forbid a rate without
   withholding, require it with withholding, and enforce the 1.80% minimum.
