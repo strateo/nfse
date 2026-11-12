@@ -1,8 +1,9 @@
-"""ICP-Brasil A1 certificate (.pfx/.p12): signing key and mTLS context."""
+"""ICP-Brasil A1 certificate (.pfx/.p12): signing key, mTLS context and e-CNPJ checks."""
 
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import shutil
 import ssl
@@ -15,6 +16,32 @@ from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+
+from .documents import is_valid_cnpj
+from .errors import NfseError
+
+ECNPJ_OID = "2.16.76.1.3.3"  # DOC-ICP-04: the company's CNPJ in a SubjectAlternativeName otherName
+MIN_KEY_BITS = 2048  # DOC-ICP-04 minimum for A1 RSA keys
+_CN_CNPJ = re.compile(r"[0-9A-Z]{12}[0-9]{2}")
+
+
+class CertificateError(NfseError, ValueError):
+    """The certificate cannot sign or authenticate an NFS-e request; ``code`` is stable."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def _der_string(value: bytes) -> str | None:
+    """Text of a short DER OCTET/UTF8/Printable/IA5 string; ICP-Brasil CAs use several."""
+    if len(value) < 2 or value[0] not in (0x04, 0x0C, 0x13, 0x16) or value[1] >= 0x80 or len(value) != 2 + value[1]:
+        return None
+    try:
+        return value[2:].decode("ascii").strip()
+    except UnicodeDecodeError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -42,6 +69,60 @@ class Certificate:
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return (now or datetime.now(timezone.utc)) > self.not_valid_after
+
+    @property
+    def cnpj(self) -> str | None:
+        """The e-CNPJ holder's CNPJ from the ICP-Brasil otherName, or None when absent or invalid.
+
+        The subject CN ("NAME:CNPJ") is a display convention, not the authoritative field.
+        """
+        try:
+            san = self.cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        except x509.ExtensionNotFound:
+            return None
+        for name in san.get_values_for_type(x509.OtherName):
+            if name.type_id.dotted_string == ECNPJ_OID:
+                text = _der_string(name.value)
+                return text.upper() if text and is_valid_cnpj(text.upper()) else None
+        return None
+
+    def check(self, *, cnpj: str | None = None, now: datetime | None = None) -> None:
+        """Raise CertificateError when the certificate cannot be used for NFS-e, in fix order.
+
+        ``cnpj`` additionally requires an e-CNPJ issued to that company. The ICP-Brasil chain
+        and revocation are not checked; SEFIN validates them on every request.
+        """
+        if self.key.public_key().public_numbers() != self.cert.public_key().public_numbers():
+            raise CertificateError("key-mismatch", "the private key does not match the certificate")
+        if self.key.key_size < MIN_KEY_BITS:
+            raise CertificateError("weak-key", f"RSA key below {MIN_KEY_BITS} bits")
+        holder = self.cnpj
+        cn = self.cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        suffix = str(cn[0].value).rpartition(":")[2].strip().upper() if cn else ""
+        if holder and _CN_CNPJ.fullmatch(suffix) and suffix != holder:
+            raise CertificateError("cnpj-inconsistent", "the subject CN and the e-CNPJ field carry different CNPJs")
+        if cnpj is not None:
+            if holder is None:
+                raise CertificateError("not-ecnpj", "not an ICP-Brasil e-CNPJ: no CNPJ in the certificate")
+            if holder != cnpj.upper():
+                raise CertificateError("cnpj-mismatch", f"certificate issued to CNPJ {holder}, not {cnpj}")
+        now = now or datetime.now(timezone.utc)
+        if now < self.cert.not_valid_before_utc:
+            raise CertificateError("not-yet-valid", f"valid only from {self.cert.not_valid_before_utc:%Y-%m-%d}")
+        if now > self.not_valid_after:
+            raise CertificateError("expired", f"expired on {self.not_valid_after:%Y-%m-%d}")
+        try:
+            usage = self.cert.extensions.get_extension_for_class(x509.KeyUsage).value
+        except x509.ExtensionNotFound:
+            usage = None
+        if usage is not None and not usage.digital_signature:
+            raise CertificateError("key-usage", "the certificate does not allow digital signatures")
+        try:
+            extended = self.cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+        except x509.ExtensionNotFound:
+            extended = None
+        if extended is not None and ExtendedKeyUsageOID.CLIENT_AUTH not in extended:
+            raise CertificateError("key-usage", "the certificate does not allow TLS client authentication, which SEFIN requires")
 
     def ssl_context(self, cafile: str | None = None) -> ssl.SSLContext:
         """Client-authenticated TLS context, HTTP/1.1 only (SEFIN refuses HTTP/2).

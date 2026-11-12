@@ -37,7 +37,7 @@ from lxml import etree
 from nfse_nacional import __version__
 from nfse_nacional import dps as d
 from nfse_nacional import events, schemas, signing
-from nfse_nacional.certificate import Certificate
+from nfse_nacional.certificate import Certificate, CertificateError
 from nfse_nacional.client import AdnClient, SefinClient
 from nfse_nacional.danfse import Watermark, render_danfse
 from nfse_nacional.environment import PRODUCAO_RESTRITA as ENV
@@ -144,16 +144,6 @@ def _check_adn(adn: AdnClient, report: Report, last_nsu: int, max_batches: int) 
     return True
 
 
-def _cnpj_from_certificate(cert: Certificate) -> str | None:
-    # ICP-Brasil e-CNPJ carries the CNPJ in the subject CN as "NAME:CNPJ".
-    for attr in cert.cert.subject:
-        if attr.oid.dotted_string == "2.5.4.3" and ":" in attr.value:
-            candidate = attr.value.rsplit(":", 1)[1].strip()
-            if len(candidate) == 14:
-                return candidate
-    return None
-
-
 def _next_n_dps(out: Path, cnpj: str, serie: str, explicit: str | None) -> str:
     """Never reuse a number: SEFIN answers a repeated DPS Id with the note it already issued."""
     path = out / STATE_FILE
@@ -249,13 +239,15 @@ def run(args: argparse.Namespace) -> int:
         report.record("certificate", False, f"cannot load PFX: {e}")
         report.save()
         return 1
-    cnpj = args.cnpj or _cnpj_from_certificate(cert)
-    if cert.is_expired():
-        report.record("certificate", False, f"expired on {cert.not_valid_after:%Y-%m-%d}")
+    cnpj = args.cnpj or cert.cnpj
+    try:
+        cert.check()
+    except CertificateError as e:
+        report.record("certificate", False, str(e))
         report.save()
         return 1
     if not cnpj:
-        report.record("certificate", False, "CNPJ not found in the certificate subject; pass --cnpj")
+        report.record("certificate", False, "no e-CNPJ field in the certificate; pass --cnpj")
         report.save()
         return 1
     report.record("certificate", True, f"CNPJ {cnpj}, valid until {cert.not_valid_after:%Y-%m-%d}")

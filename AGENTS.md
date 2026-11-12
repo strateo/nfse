@@ -16,7 +16,7 @@ Python 3.11+ client library `nfse_nacional` for the NFS-e Padrão Nacional (SEFI
   - `events.py`: pedRegEvento builders.
   - `signing.py`: XMLDSig and wire serialization.
   - `schemas.py`: XSD validation.
-  - `certificate.py`: PFX and mTLS context.
+  - `certificate.py`: PFX, mTLS context and e-CNPJ checks.
   - `client.py`: SEFIN and ADN clients.
   - `danfse.py`: DANFSe PDF (NT 008), using reportlab.
   - `errors.py`: exceptions and error-body parsing.

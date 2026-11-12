@@ -29,7 +29,7 @@ Install from a checkout with `python -m pip install .`. This repository provides
 ## Highlights
 
 - DPS builders for production and Produção Restrita layouts.
-- A1 certificate handling, XML signatures and official XSD validation.
+- A1 certificate handling with e-CNPJ holder, validity and key-usage checks, XML signatures and official XSD validation.
 - SEFIN issuance, recovery, queries and cancellation; ADN distribution.
 - Local DANFSe PDFs with explicit Unicode fallback fonts.
 - Decimal amounts and offline validation guards.
@@ -89,6 +89,7 @@ from nfse_nacional.environment import PRODUCAO_RESTRITA as ENV
 from nfse_nacional.errors import RejectionError, TransportError
 
 cert = Certificate.from_pfx_file("empresa.pfx", "senha")
+cert.check(cnpj="11222333000181")  # e-CNPJ holder, validity and key usage
 sefin = SefinClient(cert.ssl_context(), ENV)
 
 note = d.Dps(

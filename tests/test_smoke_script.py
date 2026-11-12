@@ -11,7 +11,9 @@ from types import SimpleNamespace
 from pathlib import Path
 from unittest import mock
 
-from _certs import PFX_PASSWORD, make_pki
+from _certs import PFX_PASSWORD, ecnpj_certificate, make_pki
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import pkcs12
 from nfse_nacional import schemas, signing
 from nfse_nacional.client import DfeBatch, DfeDocument, EmissionResult
 from nfse_nacional.errors import Message, RejectionError, TransportError
@@ -78,7 +80,7 @@ class SmokeScriptDryRunTest(unittest.TestCase):
         schemas.validate(root, PRODUCAO_RESTRITA.layout)
         report = json.loads((out / "report.json").read_text(encoding="utf-8"))
         self.assertTrue(all(step["ok"] for step in report))
-        self.assertIn("11222333000181", report[0]["detail"])  # CNPJ read from the certificate CN
+        self.assertIn("11222333000181", report[0]["detail"])  # CNPJ read from the e-CNPJ field
         summary = json.loads((out / "acceptance-summary.json").read_text(encoding="utf-8"))
         self.assertEqual(summary["mode"], "dry_run")
         self.assertEqual(summary["layout_release"], "nt009-r1-20261020")
@@ -86,6 +88,24 @@ class SmokeScriptDryRunTest(unittest.TestCase):
         self.assertEqual(checks["build DPS"], "passed")
         self.assertEqual(checks["emit"], "not_run")
         self.assertNotIn("11222333000181", json.dumps(summary))
+
+    def test_certificate_without_ecnpj_field_needs_explicit_cnpj(self):
+        key, cert = ecnpj_certificate(san=())
+        (self.tmp / "a1.pfx").write_bytes(pkcs12.serialize_key_and_certificates(
+            b"client", key, cert, None, serialization.BestAvailableEncryption(PFX_PASSWORD)))
+        self.assertEqual(self.run_script(), 1)
+        report = json.loads((self.tmp / "out" / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual((report[0]["step"], report[0]["ok"]), ("certificate", False))
+        self.assertIn("--cnpj", report[0]["detail"])
+
+    def test_unusable_certificate_stops_before_building(self):
+        key, cert = ecnpj_certificate(digital_signature=False)
+        (self.tmp / "a1.pfx").write_bytes(pkcs12.serialize_key_and_certificates(
+            b"client", key, cert, None, serialization.BestAvailableEncryption(PFX_PASSWORD)))
+        self.assertEqual(self.run_script(), 1)
+        report = json.loads((self.tmp / "out" / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(report), 1)
+        self.assertIn("digital signatures", report[0]["detail"])
 
     def test_summary_allowlist_excludes_private_fields_and_untrusted_codes(self):
         report = smoke.Report(self.tmp)
