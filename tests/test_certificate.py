@@ -1,4 +1,5 @@
 import datetime
+import pickle
 import unittest
 
 from cryptography import x509
@@ -8,8 +9,6 @@ from cryptography.x509.oid import ExtendedKeyUsageOID
 from _certs import CLIENT_CNPJ, PFX_PASSWORD, ecnpj_certificate, ecnpj_other_name, make_pki
 from nfse_nacional.certificate import Certificate, CertificateError
 from nfse_nacional.errors import NfseError
-
-NOW = datetime.datetime.now(datetime.timezone.utc)
 ALPHANUMERIC = "12ABC34501DE35"
 
 
@@ -44,6 +43,9 @@ class CnpjTest(unittest.TestCase):
             with self.subTest(value=value.value):
                 self.assertIsNone(_cert(subject="EMPRESA", san=(value,)).cnpj)
 
+    def test_a_bad_entry_does_not_hide_a_good_one(self):
+        self.assertEqual(_cert(san=(ecnpj_other_name("11222333000182"), CLIENT_CNPJ)).cnpj, CLIENT_CNPJ)
+
     def test_ignores_other_icp_brasil_fields(self):
         other = x509.OtherName(x509.ObjectIdentifier("2.16.76.1.3.4"), b"\x04\x0e" + CLIENT_CNPJ.encode())
         self.assertIsNone(_cert(san=(other,)).cnpj)
@@ -60,6 +62,17 @@ class CheckTest(unittest.TestCase):
     def test_a_usable_certificate_passes(self):
         _cert().check()
         _cert(eku=()).check(cnpj=CLIENT_CNPJ)
+        _cert(digital_signature=None).check()  # no KeyUsage extension at all
+
+    def test_rejects_an_invalid_cnpj_argument_as_caller_error(self):
+        for value in ("11.222.333/0001-81", " 11222333000181", "", "bogus"):
+            with self.subTest(value=value), self.assertRaises(ValueError) as caught:
+                _cert().check(cnpj=value)
+            self.assertNotIsInstance(caught.exception, CertificateError)
+
+    def test_error_survives_pickling(self):
+        error = pickle.loads(pickle.dumps(CertificateError("expired", "expired on 2026-01-01")))
+        self.assertEqual((error.code, str(error)), ("expired", "expired on 2026-01-01"))
 
     def test_key_mismatch(self):
         _, cert = ecnpj_certificate()
@@ -70,21 +83,24 @@ class CheckTest(unittest.TestCase):
 
     def test_cnpj_binding(self):
         self.assertCode("cnpj-inconsistent", _cert(subject="EMPRESA:11444777000161"))
+        _cert(subject="11444777000161").check(cnpj=CLIENT_CNPJ)  # a CN without "NAME:" carries no CNPJ
         self.assertCode("not-ecnpj", _cert(san=()), cnpj=CLIENT_CNPJ)
         self.assertCode("cnpj-mismatch", _cert(), cnpj="11444777000161")
         _cert(san=()).check()  # without a required CNPJ, a non-e-CNPJ A1 can still be used
 
     def test_validity_window(self):
-        self.assertCode("not-yet-valid", _cert(not_before=NOW + datetime.timedelta(days=1), not_after=NOW + datetime.timedelta(days=2)))
-        self.assertCode("expired", _cert(not_before=NOW - datetime.timedelta(days=2), not_after=NOW - datetime.timedelta(days=1)))
-        _cert().check(now=NOW)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        self.assertCode("expired", _cert(), now=now + datetime.timedelta(days=2))
+        self.assertCode("not-yet-valid", _cert(not_before=now + datetime.timedelta(days=1), not_after=now + datetime.timedelta(days=2)))
+        self.assertCode("expired", _cert(not_before=now - datetime.timedelta(days=2), not_after=now - datetime.timedelta(days=1)))
+        _cert().check(now=now)
 
     def test_key_usage(self):
         self.assertCode("key-usage", _cert(digital_signature=False))
-        self.assertCode("key-usage", _cert(eku=(ExtendedKeyUsageOID.EMAIL_PROTECTION,)))
+        self.assertCode("client-auth", _cert(eku=(ExtendedKeyUsageOID.EMAIL_PROTECTION,)))
 
     def test_reports_problems_in_fix_order(self):
-        expired = NOW - datetime.timedelta(days=1)
+        expired = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
         self.assertCode("cnpj-mismatch", _cert(not_before=expired - datetime.timedelta(days=1), not_after=expired), cnpj="11444777000161")
 
 

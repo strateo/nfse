@@ -27,7 +27,7 @@ Dependências: `lxml`, `cryptography` e `reportlab` (PDF do DANFSe). O transport
 ## Recursos
 
 - Construção de DPS nos leiautes de produção e Produção Restrita.
-- Certificado A1 com leitura do CNPJ do e-CNPJ e verificação de validade e uso da chave, assinatura XML e validação pelos XSDs oficiais.
+- Certificado A1 (leitura do CNPJ do titular do e-CNPJ e verificação de validade e de uso da chave), assinatura XML e validação pelos XSDs oficiais.
 - Emissão, recuperação, consulta e cancelamento pela SEFIN; distribuição pelo ADN.
 - Geração local do DANFSe em PDF, com fontes de fallback Unicode explícitas.
 - Valores em `Decimal` e verificações locais das regras de preenchimento.

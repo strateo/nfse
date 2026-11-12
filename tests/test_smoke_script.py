@@ -98,6 +98,16 @@ class SmokeScriptDryRunTest(unittest.TestCase):
         self.assertEqual((report[0]["step"], report[0]["ok"]), ("certificate", False))
         self.assertIn("--cnpj", report[0]["detail"])
 
+    def test_explicit_cnpj_covers_a_certificate_without_ecnpj_field(self):
+        key, cert = ecnpj_certificate(san=())
+        (self.tmp / "a1.pfx").write_bytes(pkcs12.serialize_key_and_certificates(
+            b"client", key, cert, None, serialization.BestAvailableEncryption(PFX_PASSWORD)))
+        recipient = ("--toma-cnpj", "11444777000161", "--toma-street", "Rua Teste", "--toma-number", "10",
+                     "--toma-district", "Centro", "--toma-c-mun", "3550308", "--toma-cep", "01310100")
+        self.assertEqual(self.run_script("--cnpj", "11222333000181", *recipient), 0)
+        report = json.loads((self.tmp / "out" / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual((report[0]["step"], report[0]["ok"]), ("certificate", True))
+
     def test_unusable_certificate_stops_before_building(self):
         key, cert = ecnpj_certificate(digital_signature=False)
         (self.tmp / "a1.pfx").write_bytes(pkcs12.serialize_key_and_certificates(
@@ -105,7 +115,7 @@ class SmokeScriptDryRunTest(unittest.TestCase):
         self.assertEqual(self.run_script(), 1)
         report = json.loads((self.tmp / "out" / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(len(report), 1)
-        self.assertIn("digital signatures", report[0]["detail"])
+        self.assertIn("[key-usage]", report[0]["detail"])
 
     def test_summary_allowlist_excludes_private_fields_and_untrusted_codes(self):
         report = smoke.Report(self.tmp)

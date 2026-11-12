@@ -71,9 +71,12 @@ def _usage(*, digital_signature=True):
 def ecnpj_certificate(subject=f"EMPRESA TESTE LTDA:{CLIENT_CNPJ}", *, key=None, san=(CLIENT_CNPJ,), digital_signature=True,
                       eku=(ExtendedKeyUsageOID.CLIENT_AUTH, ExtendedKeyUsageOID.EMAIL_PROTECTION), not_before=None,
                       not_after=None) -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
-    """Self-issued A1 shaped like an ICP-Brasil e-CNPJ; each argument breaks one property."""
+    """Self-issued A1 shaped like an ICP-Brasil e-CNPJ; each argument breaks one property.
+
+    ``digital_signature=None`` omits the KeyUsage extension.
+    """
     key = key or rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    extensions = [(_usage(digital_signature=digital_signature), True)]
+    extensions = [] if digital_signature is None else [(_usage(digital_signature=digital_signature), True)]
     if eku:
         extensions.append((x509.ExtendedKeyUsage(list(eku)), False))
     names = [ecnpj_other_name(value) if isinstance(value, str) else value for value in san]

@@ -29,7 +29,7 @@ Install from a checkout with `python -m pip install .`. This repository provides
 ## Highlights
 
 - DPS builders for production and Produção Restrita layouts.
-- A1 certificate handling with e-CNPJ holder, validity and key-usage checks, XML signatures and official XSD validation.
+- A1 certificate handling (e-CNPJ holder, validity and key-usage checks), XML signatures and official XSD validation.
 - SEFIN issuance, recovery, queries and cancellation; ADN distribution.
 - Local DANFSe PDFs with explicit Unicode fallback fonts.
 - Decimal amounts and offline validation guards.

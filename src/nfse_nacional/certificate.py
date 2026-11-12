@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import secrets
 import shutil
 import ssl
@@ -19,19 +18,10 @@ from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from .documents import is_valid_cnpj
-from .errors import NfseError
+from .errors import CertificateError
 
 ECNPJ_OID = "2.16.76.1.3.3"  # DOC-ICP-04: the company's CNPJ in a SubjectAlternativeName otherName
-MIN_KEY_BITS = 2048  # DOC-ICP-04 minimum for A1 RSA keys
-_CN_CNPJ = re.compile(r"[0-9A-Z]{12}[0-9]{2}")
-
-
-class CertificateError(NfseError, ValueError):
-    """The certificate cannot sign or authenticate an NFS-e request; ``code`` is stable."""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
+MIN_KEY_BITS = 2048  # DOC-ICP-04 §6.1.5 and DOC-ICP-01.01: minimum RSA size for A1 keys
 
 
 def _der_string(value: bytes) -> str | None:
@@ -82,28 +72,33 @@ class Certificate:
             return None
         for name in san.get_values_for_type(x509.OtherName):
             if name.type_id.dotted_string == ECNPJ_OID:
-                text = _der_string(name.value)
-                return text.upper() if text and is_valid_cnpj(text.upper()) else None
+                text = (_der_string(name.value) or "").upper()
+                if is_valid_cnpj(text):
+                    return text
         return None
 
     def check(self, *, cnpj: str | None = None, now: datetime | None = None) -> None:
         """Raise CertificateError when the certificate cannot be used for NFS-e, in fix order.
 
-        ``cnpj`` additionally requires an e-CNPJ issued to that company. The ICP-Brasil chain
-        and revocation are not checked; SEFIN validates them on every request.
+        ``cnpj`` (14 characters, unformatted) additionally requires an e-CNPJ issued to that
+        company; an invalid ``cnpj`` raises a plain ValueError. ``now`` must be timezone-aware.
+        The ICP-Brasil chain and revocation are not checked; SEFIN validates them on every request.
         """
+        if cnpj is not None and not is_valid_cnpj(cnpj.upper()):
+            raise ValueError("cnpj must be a valid 14-character CNPJ without punctuation")
         if self.key.public_key().public_numbers() != self.cert.public_key().public_numbers():
             raise CertificateError("key-mismatch", "the private key does not match the certificate")
         if self.key.key_size < MIN_KEY_BITS:
             raise CertificateError("weak-key", f"RSA key below {MIN_KEY_BITS} bits")
         holder = self.cnpj
         cn = self.cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
-        suffix = str(cn[0].value).rpartition(":")[2].strip().upper() if cn else ""
-        if holder and _CN_CNPJ.fullmatch(suffix) and suffix != holder:
+        _, separator, suffix = str(cn[0].value).rpartition(":") if cn else ("", "", "")
+        suffix = suffix.strip().upper()
+        if holder and separator and is_valid_cnpj(suffix) and suffix != holder:
             raise CertificateError("cnpj-inconsistent", "the subject CN and the e-CNPJ field carry different CNPJs")
         if cnpj is not None:
             if holder is None:
-                raise CertificateError("not-ecnpj", "not an ICP-Brasil e-CNPJ: no CNPJ in the certificate")
+                raise CertificateError("not-ecnpj", "not an ICP-Brasil e-CNPJ: no readable e-CNPJ field")
             if holder != cnpj.upper():
                 raise CertificateError("cnpj-mismatch", f"certificate issued to CNPJ {holder}, not {cnpj}")
         now = now or datetime.now(timezone.utc)
@@ -122,7 +117,7 @@ class Certificate:
         except x509.ExtensionNotFound:
             extended = None
         if extended is not None and ExtendedKeyUsageOID.CLIENT_AUTH not in extended:
-            raise CertificateError("key-usage", "the certificate does not allow TLS client authentication, which SEFIN requires")
+            raise CertificateError("client-auth", "the certificate does not allow TLS client authentication, which SEFIN requires")
 
     def ssl_context(self, cafile: str | None = None) -> ssl.SSLContext:
         """Client-authenticated TLS context, HTTP/1.1 only (SEFIN refuses HTTP/2).

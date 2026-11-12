@@ -7,11 +7,12 @@
 - Add `Certificate.check()`, raising `CertificateError` with a stable `code` for a
   key that does not match the certificate, an RSA key under 2048 bits, a subject CN
   that contradicts the e-CNPJ field, a different required CNPJ, a certificate outside
-  its validity window, or one without digital-signature or TLS client-auth usage.
+  its validity window, or one without digital-signature (`key-usage`) or TLS
+  client-auth (`client-auth`) usage. An invalid `cnpj` argument raises ValueError.
   The ICP-Brasil chain and revocation are not checked locally.
 - The Produção Restrita smoke runner reads the CNPJ from the e-CNPJ field instead of
   the subject CN, and runs `check()` before building a DPS. A certificate without the
-  e-CNPJ field now needs `--cnpj`.
+  e-CNPJ field now needs `--cnpj`. A failed check reports its code.
 
 ## 0.1.3 (2026-11-10)
 

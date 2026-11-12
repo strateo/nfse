@@ -243,7 +243,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         cert.check()
     except CertificateError as e:
-        report.record("certificate", False, str(e))
+        report.record("certificate", False, f"[{e.code}] {e}")
         report.save()
         return 1
     if not cnpj:
