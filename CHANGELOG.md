@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.4 (2026-11-12)
 
 - Reject `TotalTax.mei()` for a Não Optante provider (E0713). The builder accepted
   it and SEFIN rejects it. The MEI and Não Optante guards now cite E0710 and E0713.
