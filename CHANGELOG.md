@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Reject `TotalTax.mei()` for a Não Optante provider (E0713). The builder accepted
+  it and SEFIN rejects it. The MEI and Não Optante guards now cite E0710 and E0713.
+- Accept `TotalTax.percent()` and `TotalTax.amount()` for MEI and ME/EPP. The
+  official rules forbid only `pTotTribSN` for MEI (E0710) and `indTotTrib` for
+  ME/EPP (E0712).
+- Stop requiring a national address for a CNPJ recipient. Both official rule sheets
+  mark E0235 as not executed when SEFIN receives a provider DPS. Callers that want
+  the address on every note must check it themselves.
+- Document the common rejections, the regime rules for `totTrib` and the TLS
+  behaviour of SEFIN and ADN.
 - Read the e-CNPJ holder's CNPJ from the ICP-Brasil SubjectAlternativeName field
   (OID 2.16.76.1.3.3) with `Certificate.cnpj`, including alphanumeric CNPJs.
 - Add `Certificate.check()`, raising `CertificateError` with a stable `code` for a

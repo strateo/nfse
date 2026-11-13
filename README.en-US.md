@@ -72,6 +72,11 @@ With withholding (`tpRetISSQN=2` or `3`), it requires a rate between 1.80% and
 Other municipal rules, such as E0617 for non-optantes, still require municipality
 parameter lookup; offline validation does not guarantee SEFIN acceptance.
 
+`totTrib` follows the provider's regime: MEI must not send `pTotTribSN` (E0710),
+ME/EPP must not send `indTotTrib` (E0712), and Não Optante must send neither
+(E0713), which leaves `TotalTax.percent()` or `TotalTax.amount()`. A CNPJ
+recipient's address is optional: SEFIN does not run E0235 on a provider DPS.
+
 The default `dhEmi` is backdated by five seconds to allow for SEFIN clock skew.
 During the first five seconds after Brasília midnight, this can fall on the
 previous day and reject today's `dCompet` (E0015). Schedule issuance after this
@@ -120,6 +125,18 @@ except RejectionError as e:
 ```
 
 Cancellation uses `events.build_cancellation(...)`, then `signing.sign` and `sefin.register_event(key, xml)`. Distribution uses `AdnClient(cert.ssl_context(), ENV).fetch_dfe(last_nsu)` in a loop until `batch.exhausted`, persisting `batch.last_nsu` after each batch only when it is not `None`.
+
+### Common rejections
+
+| Answer | Meaning | What to do |
+| --- | --- | --- |
+| HTTP 403 with an HTML body | SEFIN refused or never received the client certificate. | Check the certificate with `cert.check()` and use `cert.ssl_context()` unchanged. |
+| E0008 | `dhEmi` is later than SEFIN's processing time. | Keep the default `dhEmi`; fix the machine clock. |
+| E0014 | The DPS identifier already produced an NFS-e. | Call `sefin.recover(xml, note.id)` with the saved XML; never renumber first. |
+| E0015 | `dCompet` is after the emission date. | Retry after the first seconds past Brasília midnight. |
+| E0116 | The municipality has a CNC record for the provider and `IM` is missing. | Send `Provider.IM`. |
+| E0120 | `IM` was sent but the municipality has no CNC record for the provider. | Omit `Provider.IM`. |
+| E0710, E0712, E0713 | The `totTrib` choice does not match the regime. | Use the `TotalTax` constructor allowed for the regime. |
 
 ### DANFSe (PDF)
 

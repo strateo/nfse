@@ -263,8 +263,35 @@ class GuardTest(unittest.TestCase):
     def test_naive_emission_remains_rejected(self):
         self.assert_rejected(me_epp_dps(dhEmi=datetime(2026, 11, 3)), "timezone-aware")
 
+    def test_total_tax_choice_follows_the_regime(self):
+        percent = d.TotalTax.percent(Decimal("13.45"), Decimal("0"), Decimal("2.5"))
+        amount = d.TotalTax.amount(Decimal("201.75"), Decimal("0"), Decimal("37.5"))
+        providers = {
+            "mei": d.Provider(opSimpNac=d.OP_SIMP_NAC_MEI, CNPJ="11222333000181"),
+            "me_epp": d.Provider(opSimpNac=d.OP_SIMP_NAC_ME_EPP, CNPJ="11222333000181", regApTribSN="1"),
+            "nao_optante": d.Provider(opSimpNac=d.OP_SIMP_NAC_NAO_OPTANTE, CNPJ="11222333000181"),
+        }
+        refused = {
+            ("mei", "simples"): "E0710",
+            ("me_epp", "mei"): "E0712",
+            ("nao_optante", "mei"): "E0713",
+            ("nao_optante", "simples"): "E0713",
+        }
+        choices = {"mei": d.TotalTax.mei(), "simples": d.TotalTax.simples(Decimal("6")),
+                   "percent": percent, "amount": amount}
+        for regime, provider in providers.items():
+            for choice, total in choices.items():
+                dps = me_epp_dps(prest=provider, totTrib=total)
+                for env in ENVIRONMENTS:
+                    with self.subTest(regime=regime, choice=choice, layout=env.layout):
+                        code = refused.get((regime, choice))
+                        if code is None:
+                            schemas.validate(d.build_dps(dps, env), env.layout)
+                        else:
+                            with self.assertRaisesRegex(ValueError, code):
+                                d.build_dps(dps, env)
+
     def test_regime_rules(self):
-        self.assert_rejected(me_epp_dps(totTrib=d.TotalTax.mei()), "E0712")
         self.assert_rejected(
             me_epp_dps(prest=d.Provider(opSimpNac="3", CNPJ="11222333000181")), "E0166"
         )
@@ -280,18 +307,23 @@ class GuardTest(unittest.TestCase):
         self.assert_rejected(me_epp_dps(toma=d.Taker(xNome="Self", CNPJ="11222333000181")), "E0202")
         self.assert_rejected(me_epp_dps(tribMun=d.MunicipalTax(tpRetISSQN="2", pAliq=Decimal("25"))), "E0595")
 
-    def test_required_recipient_addresses_are_guarded_without_repeating_pii(self):
-        cases = (
-            (d.Taker(xNome="Private buyer", CNPJ="11444777000161"), "E0235"),
-            (d.Taker(xNome="Private buyer", NIF="sensitive-identifier"), "E0242"),
-        )
-        for recipient, expected in cases:
-            for env in ENVIRONMENTS:
-                with self.subTest(rule=expected, layout=env.layout):
-                    with self.assertRaises(ValueError) as ctx:
-                        d.build_dps(me_epp_dps(toma=recipient), env)
-                    self.assertIn(expected, str(ctx.exception))
-                    self.assertNotIn("sensitive-identifier", str(ctx.exception))
+    def test_foreign_recipient_address_is_guarded_without_repeating_pii(self):
+        recipient = d.Taker(xNome="Private buyer", NIF="sensitive-identifier")
+        for env in ENVIRONMENTS:
+            with self.subTest(layout=env.layout):
+                with self.assertRaises(ValueError) as ctx:
+                    d.build_dps(me_epp_dps(toma=recipient), env)
+                self.assertIn("E0242", str(ctx.exception))
+                self.assertNotIn("sensitive-identifier", str(ctx.exception))
+
+    def test_cnpj_recipient_address_is_optional(self):
+        # E0235 runs only when the ADN receives a municipality-shared NFS-e, not on a DPS.
+        recipient = d.Taker(xNome="Acme Serviços Ltda", CNPJ="11444777000161")
+        for env in ENVIRONMENTS:
+            with self.subTest(layout=env.layout):
+                root = d.build_dps(me_epp_dps(toma=recipient), env)
+                schemas.validate(root, env.layout)
+                self.assertIsNone(root.find("n:infDPS/n:toma/n:end", NS))
 
     def test_base_library_keeps_no_nif_source_document_compatibility(self):
         # New-checkout address/absence-reason policy belongs to billing.map_billing.
