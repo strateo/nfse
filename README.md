@@ -27,7 +27,7 @@ Dependências: `lxml`, `cryptography` e `reportlab` (PDF do DANFSe). O transport
 ## Recursos
 
 - Construção de DPS nos leiautes de produção e Produção Restrita.
-- Certificado A1, assinatura XML e validação pelos XSDs oficiais.
+- Certificado A1 (leitura do CNPJ do titular do e-CNPJ e verificação de validade e de uso da chave), assinatura XML e validação pelos XSDs oficiais.
 - Emissão, recuperação, consulta e cancelamento pela SEFIN; distribuição pelo ADN.
 - Geração local do DANFSe em PDF, com fontes de fallback Unicode explícitas.
 - Valores em `Decimal` e verificações locais das regras de preenchimento.
@@ -91,6 +91,7 @@ from nfse_nacional.environment import PRODUCAO_RESTRITA as ENV
 from nfse_nacional.errors import RejectionError, TransportError
 
 cert = Certificate.from_pfx_file("empresa.pfx", "senha")
+cert.check(cnpj="11222333000181")  # e-CNPJ holder, validity and key usage
 sefin = SefinClient(cert.ssl_context(), ENV)
 
 note = d.Dps(

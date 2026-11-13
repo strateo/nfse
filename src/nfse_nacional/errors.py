@@ -37,6 +37,21 @@ class TransportError(NfseError):
         return self.status is None or self.status == 429 or self.status >= 500
 
 
+class CertificateError(NfseError, ValueError):
+    """The A1 certificate cannot sign or authenticate an NFS-e request.
+
+    ``code`` is stable: key-mismatch, weak-key, cnpj-inconsistent, not-ecnpj, cnpj-mismatch,
+    not-yet-valid, expired, key-usage, client-auth.
+    """
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+    def __reduce__(self):
+        return type(self), (self.code, str(self))
+
+
 class RejectionError(NfseError):
     """SEFIN/ADN processed the request and refused it; ``messages`` holds the E-codes."""
 

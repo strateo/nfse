@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Read the e-CNPJ holder's CNPJ from the ICP-Brasil SubjectAlternativeName field
+  (OID 2.16.76.1.3.3) with `Certificate.cnpj`, including alphanumeric CNPJs.
+- Add `Certificate.check()`, raising `CertificateError` with a stable `code` for a
+  key that does not match the certificate, an RSA key under 2048 bits, a subject CN
+  that contradicts the e-CNPJ field, a different required CNPJ, a certificate outside
+  its validity window, or one without digital-signature (`key-usage`) or TLS
+  client-auth (`client-auth`) usage. An invalid `cnpj` argument raises ValueError.
+  The ICP-Brasil chain and revocation are not checked locally.
+- The Produção Restrita smoke runner reads the CNPJ from the e-CNPJ field instead of
+  the subject CN, and runs `check()` before building a DPS. A certificate without the
+  e-CNPJ field now needs `--cnpj`. A failed check reports its code.
+
 ## 0.1.3 (2026-11-10)
 
 - Identify the bundled NT 009 release 1 with Layout.NT009_R1 and exact release
