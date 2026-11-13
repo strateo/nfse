@@ -309,12 +309,33 @@ class GuardTest(unittest.TestCase):
 
     def test_foreign_recipient_address_is_guarded_without_repeating_pii(self):
         recipient = d.Taker(xNome="Private buyer", NIF="sensitive-identifier")
+        national = d.Taker(xNome="Private buyer", NIF="sensitive-identifier", end=me_epp_dps().toma.end)
         for env in ENVIRONMENTS:
-            with self.subTest(layout=env.layout):
-                with self.assertRaises(ValueError) as ctx:
-                    d.build_dps(me_epp_dps(toma=recipient), env)
-                self.assertIn("E0242", str(ctx.exception))
-                self.assertNotIn("sensitive-identifier", str(ctx.exception))
+            for taker in (recipient, national):
+                with self.subTest(layout=env.layout, address=taker.end is not None):
+                    with self.assertRaises(ValueError) as ctx:
+                        d.build_dps(me_epp_dps(toma=taker), env)
+                    self.assertIn("E0242", str(ctx.exception))
+                    self.assertNotIn("sensitive-identifier", str(ctx.exception))
+
+    def test_nif_recipient_of_a_cpf_provider_follows_each_layout(self):
+        # Production row 264 conditions E0242 on a CNPJ issuer; NT 009 row 359 does not.
+        cpf_provider = d.Provider(opSimpNac=d.OP_SIMP_NAC_ME_EPP, CPF="52998224725", regApTribSN="1")
+        note = me_epp_dps(prest=cpf_provider, toma=d.Taker(xNome="Private buyer", NIF="sensitive-identifier"))
+        schemas.validate(d.build_dps(note, PRODUCAO), PRODUCAO.layout)
+        with self.assertRaises(ValueError) as ctx:
+            d.build_dps(note, PRODUCAO_RESTRITA)
+        self.assertIn("E0242", str(ctx.exception))
+        self.assertNotIn("sensitive-identifier", str(ctx.exception))
+
+    def test_cnaonif_recipient_address_follows_each_layout(self):
+        # NT 009 row 359 extends E0242 to cNaoNIF; production row 264 covers NIF only.
+        note = me_epp_dps(toma=d.Taker(xNome="Source buyer", cNaoNIF="0"))
+        self.assertEqual(PRODUCAO.layout, d.Layout.V1_01)
+        self.assertEqual(PRODUCAO_RESTRITA.layout, d.Layout.NT009)
+        schemas.validate(d.build_dps(note, PRODUCAO), PRODUCAO.layout)
+        with self.assertRaisesRegex(ValueError, r"toma cNaoNIF requires a foreign address \(E0242\)"):
+            d.build_dps(note, PRODUCAO_RESTRITA)
 
     def test_cnpj_recipient_address_is_optional(self):
         # E0235 runs only when the ADN receives a municipality-shared NFS-e, not on a DPS.
@@ -324,11 +345,6 @@ class GuardTest(unittest.TestCase):
                 root = d.build_dps(me_epp_dps(toma=recipient), env)
                 schemas.validate(root, env.layout)
                 self.assertIsNone(root.find("n:infDPS/n:toma/n:end", NS))
-
-    def test_base_library_keeps_no_nif_source_document_compatibility(self):
-        # New-checkout address/absence-reason policy belongs to billing.map_billing.
-        for env in ENVIRONMENTS:
-            schemas.validate(d.build_dps(me_epp_dps(toma=d.Taker(xNome="Source buyer", cNaoNIF="0")), env), env.layout)
 
     def test_invalid_recipient_identifier_error_does_not_echo_identifier(self):
         with self.assertRaises(ValueError) as ctx:
