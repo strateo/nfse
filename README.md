@@ -72,6 +72,12 @@ E0595). Valores inválidos são rejeitados, nunca removidos silenciosamente.
 As demais regras municipais, como E0617 para não optantes, ainda exigem consultar
 a parametrização do município; a validação local não garante aceitação pela SEFIN.
 
+`totTrib` segue o regime do prestador: MEI não pode enviar `pTotTribSN` (E0710),
+ME/EPP não pode enviar `indTotTrib` (E0712) e Não Optante não pode enviar nenhum
+dos dois (E0713), restando `TotalTax.percent()` ou `TotalTax.amount()`. O endereço
+do tomador identificado por CNPJ é opcional: a SEFIN não executa a E0235 na DPS
+enviada pelo prestador.
+
 Por padrão, `dhEmi` é retroagido em cinco segundos para compensar diferença de
 relógio com a SEFIN. Nos primeiros cinco segundos após a meia-noite em Brasília,
 isso pode cair no dia anterior e rejeitar `dCompet` do dia atual (E0015).
@@ -122,6 +128,18 @@ except RejectionError as e:
 ```
 
 Para cancelar, use `events.build_cancellation(...)`, assine com `signing.sign` e envie com `sefin.register_event(key, xml)`. Para distribuição, chame `AdnClient(cert.ssl_context(), ENV).fetch_dfe(last_nsu)` até `batch.exhausted`, persistindo `batch.last_nsu` após cada lote somente quando ele não for `None`.
+
+### Rejeições comuns
+
+| Resposta | Significado | O que fazer |
+| --- | --- | --- |
+| HTTP 403 com corpo HTML | A SEFIN recusou ou não recebeu o certificado do cliente. | Verifique o certificado com `cert.check()` e use `cert.ssl_context()` sem alterações. |
+| E0008 | `dhEmi` é posterior ao horário de processamento da SEFIN. | Mantenha o `dhEmi` padrão e corrija o relógio da máquina. |
+| E0014 | O identificador da DPS já gerou uma NFS-e. | Chame `sefin.recover(xml, note.id)` com o XML salvo; nunca renumere antes. |
+| E0015 | `dCompet` é posterior à data de emissão. | Tente novamente após os primeiros segundos da meia-noite em Brasília. |
+| E0116 | O município tem cadastro CNC do prestador e `IM` não foi informada. | Envie `Provider.IM`. |
+| E0120 | `IM` foi informada, mas o município não tem cadastro CNC do prestador. | Omita `Provider.IM`. |
+| E0710, E0712, E0713 | A opção de `totTrib` não corresponde ao regime. | Use o construtor de `TotalTax` permitido para o regime. |
 
 ### DANFSe (PDF)
 

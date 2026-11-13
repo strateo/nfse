@@ -17,6 +17,8 @@ are Excel rows. The level legend is in D2, and the rule level is column J.
 | --- | --- | --- | --- |
 | E0010, level 1 | 147 | 220 | Own-application series are 00001–49999. Mobile uses 50000–69999; web 70000–79999; manual web transcription 80000–89999. |
 | E0015, level 1 | 150 | 223 | Competence must be no later than emission. The builder compares against the same Brasília timestamp serialized as dhEmi. |
+| E0235, level 1 | 259 | 350 | A CNPJ recipient needs a national address, but column K marks the rule as not executed when SEFIN receives a provider DPS. It runs when the ADN receives an NFS-e shared by a municipality. The builder does not enforce it. |
+| E0242, level 1 | 264 | 359 | A NIF recipient needs a foreign address. NT 009 extends the rule to cNaoNIF; the builder guards NIF only. |
 | E0580, level 2 | 493 | 638 | Immunity, service export and non-incidence (tribISSQN 2/3/4) forbid ISS withholding. |
 | E0588, level 2 | 495 | 640 | A special tax regime forbids ISS withholding. Production lists regimes 1–6 and 9; NT 009 lists 1–6. |
 | E0617, level 3 | 509 | 657 | pAliq is forbidden for a non-optante when the ISS-incidence municipality agreement is active at competence. |
@@ -24,6 +26,14 @@ are Excel rows. The level legend is in D2, and the rule level is column J.
 | E0621, level 3 | 511 | 659 | Under the same active-agreement/no-exception benefit conditions as E0625, withholding (2 or 3) requires pAliq, with a minimum of 1.80%. |
 | E0628, level 3 | 513 | 661 | ME/EPP with ISS assessed through SN and withholding (2 or 3) requires pAliq of at least 1.80% when the incidence municipality's agreement is not active. |
 | E0631, level 3 | 514 | 662 | ME/EPP with ISS assessed through SN must omit pAliq without withholding when the incidence municipality's agreement is not active. |
+| E0710, level 1 | 544 | 692 | MEI must not send pTotTribSN. |
+| E0712, level 1 | 541 | 689 | ME/EPP must not send indTotTrib. |
+| E0713, level 1 | 542 | 690 | Não Optante must send neither indTotTrib nor pTotTribSN, leaving vTotTrib or pTotTrib. |
+
+Column K of the rule sheet says whether a rule runs when SEFIN receives a DPS
+sent by the provider (V) or not (X); row 2 holds the column legends. Offline
+guards follow column K. The totTrib rules above are the only regime rules on
+that group in either sheet, so vTotTrib and pTotTrib stay open to every regime.
 
 Level 3 rules depend on municipal legislation configured in the national system,
 but complementary rules can cover both active and inactive agreements. The
@@ -50,6 +60,17 @@ five seconds after midnight. E0015 deliberately fails closed in that window;
 schedule after it or retry rather than silently changing the fiscal competence
 or removing the clock-skew margin. Regression coverage simulates both sides of
 the boundary without making network requests.
+
+## TLS behaviour of the endpoints
+
+Observed on 2026-11-12 with handshakes that carried no client certificate, in
+production and Produção Restrita. SEFIN negotiates TLS 1.2 and requests the
+client certificate by renegotiating after it reads the HTTP request; without one
+it answers an HTML 403. ADN negotiates TLS 1.3 and requests the certificate in
+the handshake. The default context from `Certificate.ssl_context()` allows both.
+The local mTLS test server requests the certificate in the handshake, so the
+renegotiation path is not covered by the test suite, and no authenticated call
+was made for this observation.
 
 ## NT 009 migration boundary
 

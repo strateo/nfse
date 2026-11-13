@@ -122,8 +122,9 @@ class FederalTax:
 
 @dataclass(frozen=True)
 class TotalTax:
-    """totTrib choice. Use the constructor matching the provider's regime:
-    MEI -> ``mei()``, ME/EPP -> ``simples()``, Não Optante -> ``percent()`` or ``amount()``."""
+    """totTrib choice. ``percent()`` and ``amount()`` are open to every regime. ``mei()``
+    is refused for ME/EPP (E0712) and Não Optante (E0713); ``simples()`` is refused for
+    MEI (E0710) and Não Optante (E0713)."""
 
     indTotTrib: str | None = None
     pTotTribSN: Decimal | None = None
@@ -276,13 +277,16 @@ def _validate(dps: Dps, dh_emi: datetime) -> None:
     chosen = [t.indTotTrib, t.pTotTribSN, t.percent_fed_est_mun, t.amount_fed_est_mun]
     _check(sum(v is not None for v in chosen) == 1, "totTrib needs exactly one option")
     if p.opSimpNac == OP_SIMP_NAC_MEI:
-        _check(t.indTotTrib is not None, "MEI must use TotalTax.mei() (E0713)")
+        _check(t.pTotTribSN is None, "MEI must not send pTotTribSN (E0710)")
         _check(dps.tribFed is None, "MEI must not send tribFed (E0676)")
         _check(dps.tribMun.pAliq is None, "MEI must not send pAliq (E0600)")
     elif p.opSimpNac == OP_SIMP_NAC_ME_EPP:
-        _check(t.pTotTribSN is not None, "ME/EPP must use TotalTax.simples() (E0712)")
+        _check(t.indTotTrib is None, "ME/EPP must not send indTotTrib (E0712)")
     else:
-        _check(t.pTotTribSN is None, "pTotTribSN is only for ME/EPP (E0712)")
+        _check(
+            t.indTotTrib is None and t.pTotTribSN is None,
+            "Não Optante must use TotalTax.percent() or TotalTax.amount() (E0713)",
+        )
 
     if dps.tribMun.pAliq is not None:
         if isinstance(dps.tribMun.pAliq, float):
@@ -317,11 +321,6 @@ def _validate(dps: Dps, dh_emi: datetime) -> None:
         _check(
             dps.toma.CNPJ is None or dps.toma.CNPJ != p.CNPJ, "toma and prest must differ (E0202)"
         )
-        if dps.toma.CNPJ is not None:
-            _check(
-                dps.toma.end is not None and dps.toma.end.cMun is not None,
-                "toma CNPJ requires a national address (E0235)",
-            )
         if dps.toma.NIF is not None:
             _check(
                 dps.toma.end is not None and dps.toma.end.cMun is None,

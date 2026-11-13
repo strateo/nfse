@@ -122,6 +122,10 @@ class Certificate:
     def ssl_context(self, cafile: str | None = None) -> ssl.SSLContext:
         """Client-authenticated TLS context, HTTP/1.1 only (SEFIN refuses HTTP/2).
 
+        SEFIN negotiates TLS 1.2 and asks for the client certificate by renegotiating
+        after it reads the request, so a context that forbids renegotiation or requires
+        TLS 1.3 gets an HTML 403 instead of a fiscal answer.
+
         ``load_cert_chain`` only reads files, so the key is written to a private temp dir
         encrypted with a one-time passphrase and removed before returning.
         """
