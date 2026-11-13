@@ -244,7 +244,7 @@ def _check(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def _validate(dps: Dps, dh_emi: datetime) -> None:
+def _validate(dps: Dps, dh_emi: datetime, layout: Layout) -> None:
     """Offline guards for rules every reference implementation confirmed against SEFIN.
 
     Run before taking an nDPS from the series: a rejected DPS still burns its number.
@@ -321,10 +321,17 @@ def _validate(dps: Dps, dh_emi: datetime) -> None:
         _check(
             dps.toma.CNPJ is None or dps.toma.CNPJ != p.CNPJ, "toma and prest must differ (E0202)"
         )
-        if dps.toma.NIF is not None:
+        # E0242: production requires endExt for a NIF recipient only when the issuer
+        # (always the provider, tpEmit=1) is identified by CNPJ; NT 009 requires it
+        # for NIF or cNaoNIF regardless of the issuer.
+        if layout is Layout.V1_01:
+            needs_foreign_address = dps.toma.NIF is not None and p.CNPJ is not None
+        else:
+            needs_foreign_address = dps.toma.NIF is not None or dps.toma.cNaoNIF is not None
+        if needs_foreign_address:
             _check(
                 dps.toma.end is not None and dps.toma.end.cMun is None,
-                "toma NIF requires a foreign address (E0242)",
+                f"toma {'NIF' if dps.toma.NIF is not None else 'cNaoNIF'} requires a foreign address (E0242)",
             )
 
 
@@ -444,8 +451,8 @@ def _ibscbs(parent: etree._Element, g: IbsCbs, layout: Layout) -> None:
 def build_dps(dps: Dps, environment: Environment) -> etree._Element:
     """Build the unsigned ``<DPS>`` element in the layout the environment currently expects."""
     dh_emi = dps.dhEmi if dps.dhEmi is not None else now_brasilia()
-    _validate(dps, dh_emi)
     layout = environment.layout
+    _validate(dps, dh_emi, layout)
     root = etree.Element(f"{{{NFSE_NS}}}DPS", nsmap={None: NFSE_NS}, versao=DPS_VERSION)
     inf = etree.SubElement(root, f"{{{NFSE_NS}}}infDPS", Id=dps.id)
     _sub(inf, "tpAmb", environment.tp_amb)

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Require a foreign address for a `cNaoNIF` recipient under `Layout.NT009` (E0242).
+  NT 009 Anexo VI extends the rule from NIF to cNaoNIF. `Layout.V1_01` still
+  accepts a `cNaoNIF` recipient without an address.
+- Under `Layout.V1_01`, require the foreign address for a NIF recipient only when
+  the provider is identified by CNPJ, as production Anexo I row 264 states. A CPF
+  provider may now omit it in production; `Layout.NT009` still requires it.
+
 ## 0.1.4 (2026-11-12)
 
 - Reject `TotalTax.mei()` for a Não Optante provider (E0713). The builder accepted

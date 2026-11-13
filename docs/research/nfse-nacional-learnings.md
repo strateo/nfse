@@ -18,7 +18,7 @@ are Excel rows. The level legend is in D2, and the rule level is column J.
 | E0010, level 1 | 147 | 220 | Own-application series are 00001–49999. Mobile uses 50000–69999; web 70000–79999; manual web transcription 80000–89999. |
 | E0015, level 1 | 150 | 223 | Competence must be no later than emission. The builder compares against the same Brasília timestamp serialized as dhEmi. |
 | E0235, level 1 | 259 | 350 | A CNPJ recipient needs a national address, but column K marks the rule as not executed when SEFIN receives a provider DPS. It runs when the ADN receives an NFS-e shared by a municipality. The builder does not enforce it. |
-| E0242, level 1 | 264 | 359 | A NIF recipient needs a foreign address. NT 009 extends the rule to cNaoNIF; the builder guards NIF only. |
+| E0242, level 1 | 264 | 359 | A foreign recipient needs a foreign address (`endExt`); column K is V in both sheets. Production requires it for a NIF recipient when the issuer is identified by CNPJ. NT 009 requires it for NIF or cNaoNIF, whatever the issuer. The builder follows each layout. The intermediary rule (E0298) is unchanged in NT 009, and NT 009's `dest` rule E0923 is not modelled. |
 | E0580, level 2 | 493 | 638 | Immunity, service export and non-incidence (tribISSQN 2/3/4) forbid ISS withholding. |
 | E0588, level 2 | 495 | 640 | A special tax regime forbids ISS withholding. Production lists regimes 1–6 and 9; NT 009 lists 1–6. |
 | E0617, level 3 | 509 | 657 | pAliq is forbidden for a non-optante when the ISS-incidence municipality agreement is active at competence. |
