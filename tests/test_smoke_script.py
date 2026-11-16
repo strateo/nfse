@@ -178,11 +178,12 @@ class SmokeScriptDryRunTest(unittest.TestCase):
     def acceptance_args(self):
         return smoke.parse_args([
             "--pfx", str(self.tmp / "a1.pfx"), "--c-loc-emi", "3550308", "--op-simp-nac", "3",
-            "--p-tot-trib-sn", "6.00", "--c-trib-nac", "010101", "--check-recovery", "--cancel",
+            "--p-tot-trib-sn", "6.00", "--c-trib-nac", "010101", "--check-recovery", "--cancel", "--check-dps-absence",
             "--out", str(self.tmp / "out"),
         ])
 
-    def run_mocked_acceptance(self, *, recovered=None, fetched=None, queried_event=None, interrupted=False):
+    def run_mocked_acceptance(self, *, recovered=None, fetched=None, queried_event=None, interrupted=False,
+                              existing_key=None, lookup_error=None):
         xml = b'<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse"><infNFSe/></NFSe>'
         event = b'<evento xmlns="http://www.sped.fazenda.gov.br/nfse"><infEvento/></evento>'
         key = "3550308" + "1" + "2" + "11222333000181" + "0" * 27
@@ -192,6 +193,8 @@ class SmokeScriptDryRunTest(unittest.TestCase):
                 mock.patch.object(smoke, "render_danfse", return_value=b"test PDF"), contextlib.redirect_stdout(io.StringIO()):
             sefin = client.return_value
             sefin.dps_exists.return_value = False
+            sefin.get_access_key.return_value = existing_key
+            sefin.get_access_key.side_effect = lookup_error
             sefin.emit.side_effect = TransportError("interrupted") if interrupted else None
             sefin.emit.return_value = result
             sefin.get_nfse.return_value = fetched if fetched is not None else xml
@@ -208,10 +211,43 @@ class SmokeScriptDryRunTest(unittest.TestCase):
         saved = next((self.tmp / "out").glob("*.dps.xml")).read_bytes()
         sefin.emit.assert_called_once_with(saved)
         root = etree.fromstring(saved)
+        sefin.get_access_key.assert_called_once_with(root[0].get("Id"))
         sefin.recover.assert_called_once_with(saved, root[0].get("Id"))
         sefin.get_event.assert_called_once_with(sefin.emit.return_value.access_key, "101101")
         report = json.loads((self.tmp / "out/report.json").read_text(encoding="utf-8"))
         self.assertTrue(next(step["ok"] for step in report if step["step"] == "GET event"))
+
+    def test_absence_probe_stops_before_issuance_on_existing_or_unusable_lookup(self):
+        cases = ({"existing_key": "private-existing-key"},
+                 {"lookup_error": TransportError("GET failed", status=404, body=b"<html>private gateway</html>")},
+                 {"lookup_error": RejectionError(400, [Message("E0001", "private")], {})})
+        for changes in cases:
+            with self.subTest(case=list(changes)):
+                code, sefin = self.run_mocked_acceptance(**changes)
+                self.assertEqual(code, 1)
+                sefin.emit.assert_not_called()
+                sefin.recover.assert_not_called()
+                summary = json.loads((self.tmp / "out/acceptance-summary.json").read_text(encoding="utf-8"))
+                checks = {check["step"]: check for check in summary["checks"]}
+                self.assertEqual(checks["GET /dps absent"]["outcome"], "failed")
+                self.assertEqual(checks["emit"]["outcome"], "not_run")
+                self.assertNotIn("private", json.dumps(summary))
+                if "lookup_error" in changes:
+                    self.assertEqual(checks["GET /dps absent"]["http_status"], changes["lookup_error"].status)
+
+    def test_absence_probe_is_optional_and_dry_run_makes_no_lookup(self):
+        args = self.acceptance_args()
+        self.assertTrue(args.check_dps_absence)
+        args.dry_run = True
+        with mock.patch.dict(os.environ, {"NFSE_PFX_PASSWORD": PFX_PASSWORD.decode()}), \
+                mock.patch.object(smoke, "SefinClient") as sefin, mock.patch.object(smoke, "AdnClient") as adn, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(smoke.run(args), 0)
+        sefin.assert_not_called()
+        adn.assert_not_called()
+        args = smoke.parse_args(["--pfx", "unused", "--c-loc-emi", "3550308", "--op-simp-nac", "2",
+                                 "--c-trib-nac", "010101"])
+        self.assertFalse(args.check_dps_absence)
 
     def test_interrupted_emission_reuses_the_same_document(self):
         code, sefin = self.run_mocked_acceptance(interrupted=True)
@@ -247,6 +283,7 @@ class SmokeScriptDryRunTest(unittest.TestCase):
             "--toma-postal", "SW1A 2AA", "--toma-city", "London", "--toma-region", "England",
         )
         branches = (
+            ("--toma-cnpj", "11444777000161"),
             ("--toma-cpf", "52998224725"),
             ("--toma-nif", "GB-123456"),
             ("--toma-c-nao-nif", "1"),
@@ -256,6 +293,11 @@ class SmokeScriptDryRunTest(unittest.TestCase):
             args = branch + (foreign if branch[0] in ("--toma-nif", "--toma-c-nao-nif") else ())
             with self.subTest(branch=branch[0], value=branch[1]):
                 self.assertEqual(self.run_script(*args), 0)
+
+    def test_cnpj_partial_address_still_fails(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            smoke.parse_args(["--pfx", "unused", "--c-loc-emi", "3550308", "--op-simp-nac", "2",
+                              "--c-trib-nac", "010101", "--toma-cnpj", "11444777000161", "--toma-street", "Rua Teste"])
 
     def test_foreign_address_rejects_brazilian_address_fields(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):

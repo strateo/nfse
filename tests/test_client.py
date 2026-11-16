@@ -136,6 +136,19 @@ class ClientTest(unittest.TestCase):
         body = json.loads(self.server.requests[-1][3])
         self.assertEqual(decode_xml(body["dpsXmlGZipB64"]), b"<DPS same/>")
 
+    def test_unknown_dps_lookup_keeps_json_404_policy(self):
+        path = f"/SefinNacional/dps/{DPS_ID}"
+        self.server.json("GET", path, 404, {"erros": [{"codigo": "E404", "descricao": "não encontrada"}]})
+        self.assertIsNone(self.sefin.get_access_key(DPS_ID))
+        for body in (b"", b"<html>gateway</html>"):
+            with self.subTest(body=body):
+                self.server.routes[("GET", path)] = (404, body, {})
+                with self.assertRaises(TransportError) as ctx:
+                    self.sefin.get_access_key(DPS_ID)
+                self.assertEqual(ctx.exception.status, 404)
+                self.assertEqual(ctx.exception.body, body)
+        self.assertTrue(all(request[0] == "GET" for request in self.server.requests))
+
     def test_dps_exists_uses_head(self):
         self.server.routes[("HEAD", f"/SefinNacional/dps/{DPS_ID}")] = (200, b"", {})
         self.assertTrue(self.sefin.dps_exists(DPS_ID))
