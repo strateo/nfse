@@ -7,6 +7,11 @@
   and the official NFS-e logo. See `scripts/build_reference_data.py` for inputs.
   Tables are factual reference extracts; the logo is resized for PDF rendering.
   The logo does not imply endorsement.
+- `docs/research/adn-parametrizacao-openapi.json`: unmodified official ADN municipal
+  parameters OpenAPI documentation, retrieved from the
+  [Produção Restrita service](https://adn.producaorestrita.nfse.gov.br/parametrizacao/swagger/v1/swagger.json)
+  on 2026-11-16 UTC. Attribution: Portal Nacional da NFS-e / Brazilian government.
+  Retrieval details and SHA-256 are in `docs/research/nfse-nacional-learnings.md`.
 - `tests/fixtures/pynfsenacional_golden_dps_signed.xml`: fixture attributed to
   [Gomes343/PyNFSeNacional](https://github.com/Gomes343/PyNFSeNacional), reported
   under MIT, copyright 2026 Murilo Gomes Teixeira. The full upstream notice is

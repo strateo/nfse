@@ -72,6 +72,60 @@ The local mTLS test server requests the certificate in the handshake, so the
 renegotiation path is not covered by the test suite, and no authenticated call
 was made for this observation.
 
+## Municipal parameters API
+
+The contract was retrieved directly from the official Produção Restrita service
+on **2026-11-16 at 01:29:33 UTC**, using an installed A1 certificate for mTLS:
+
+- [Official API directory](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/apis-prod-restrita-e-producao),
+  which links the municipal-parameters documentation in both environments.
+- [Official Produção Restrita OpenAPI](https://adn.producaorestrita.nfse.gov.br/parametrizacao/swagger/v1/swagger.json),
+  HTTP 200, OpenAPI 3.0.1, title `API NFS-e - ADN Parâmetros Municipais`, version `v1`.
+- [Unmodified downloaded contract](adn-parametrizacao-openapi.json), SHA-256
+  `fe11afdc72ee27161af5d906206e4f1d422f48e7556525324ca52a72867d3bd5`.
+  This is service documentation, with no certificate, credentials or taxpayer data.
+
+The contract's server base is `/parametrizacao`. Its agreement operation is
+`GET /{codigoMunicipio}/convenio`, with an integer municipality path parameter
+and **no competence parameter**. It has no `/parametros_municipais` segment.
+`ParametrosClient.get_convenio` accepts a seven-digit ASCII IBGE code as a string,
+uses `Environment.parametros_url`, and returns the JSON object unchanged.
+The production base URL is published in the official API directory; the
+production Swagger and an actual agreement query were not exercised in this run.
+The successful authenticated Swagger download proves access to the documentation,
+not live acceptance of the Python client or an issuer's tax treatment.
+
+HTTP 200, 400 and 404 all reference
+`ResultadoConsultaConfiguracoesConvenio`, whose properties are nullable string
+`mensagem` and object `parametrosConvenio`. The latter references
+`ParametrosConfiguracaoConvenio`:
+
+| Property | OpenAPI type / enum |
+| --- | --- |
+| `tipoConvenioDeserializationSetter` | `TipoConvenio`: integer 1 or 2 |
+| `aderenteAmbienteNacional` | `TipoSimNao`: integer 0, 1 or -1 |
+| `aderenteEmissorNacional` | `TipoSimNao`: integer 0, 1 or -1 |
+| `situacaoEmissaoPadraoContribuintesRFB` | `TipoSituacaoEmissaoPadraoContribuintesRFB`: integer 0, 1 or -1 |
+| `aderenteMAN` | `TipoSimNao`: integer 0, 1 or -1 |
+| `permiteAproveitametoDeCreditos` | nullable boolean; spelling retained from the contract |
+
+The OpenAPI does not label the enum values or mark properties as required.
+The client preserves the wire values and accepts a successful response only when
+`parametrosConvenio` is an object. It does not infer missing flags or collapse
+0/-1 into booleans. Documented 400/404 answers with a string `mensagem` raise
+`RejectionError`, preserving the body and plain message as code `UNKNOWN` because
+this schema supplies no E-code. Unusable bodies and other HTTP statuses raise
+`TransportError`, retaining the existing Retry-After handling.
+
+The same contract also lists service-rate, rate-history, special-regime,
+withholding and benefit queries. This change implements only the agreement
+query requested in issue #13. An agreement lookup alone cannot establish an
+active agreement at a historical competence date, supply a service rate or
+resolve the E0617/E0621/E0625/E0628/E0631 rules. No new offline fiscal guard or
+automatic DPS mutation is introduced. Local synthetic mTLS tests cover routing,
+raw responses, errors, input validation and the client-certificate requirement;
+they do not query government services.
+
 ## NT 009 migration boundary
 
 The October 29 notice identifies NT 004 plus the NT 007 retention-domain changes
