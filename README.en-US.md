@@ -138,6 +138,31 @@ Cancellation uses `events.build_cancellation(...)`, then `signing.sign` and `sef
 | E0120 | `IM` was sent but the municipality has no CNC record for the provider. | Omit `Provider.IM`. |
 | E0710, E0712, E0713 | The `totTrib` choice does not match the regime. | Use the `TotalTax` constructor allowed for the regime. |
 
+### Check the municipal agreement before issuing
+
+Use the same mTLS context and environment as issuance:
+
+```python
+from nfse_nacional.client import ParametrosClient
+
+parameters = ParametrosClient(cert.ssl_context(), ENV)
+agreement = parameters.get_convenio("3550308")  # seven-digit IBGE municipality code
+print(agreement["parametrosConvenio"])
+```
+
+The method returns the original JSON, including `mensagem` and
+`parametrosConvenio`, without converting flags to booleans. HTTP 400/404 responses
+with `mensagem` raise `RejectionError`; inspect `exception.messages` for the
+message and `exception.body` for the JSON. This API does not document E-codes in
+these responses, so the message code is `UNKNOWN`. Connection failures and
+unexpected responses raise `TransportError`, as with the other clients.
+
+This query accepts no competence date and does not establish historical agreement
+validity or determine a service's tax rate. Assess the parameters before calling
+`sefin.emit`; the client does not alter the DPS or automatically apply tax rules.
+Rate and benefit queries do not yet have methods in this library. See the
+[verified official contract and its limits](docs/research/nfse-nacional-learnings.md#municipal-parameters-api).
+
 ### DANFSe (PDF)
 
 The PDF is rendered locally as a single A4 page targeting NT 008/2026 v1.02:

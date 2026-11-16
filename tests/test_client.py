@@ -12,7 +12,7 @@ from pathlib import Path
 
 from _certs import PFX_PASSWORD, make_pki
 from nfse_nacional.certificate import Certificate
-from nfse_nacional.client import AdnClient, SefinClient, decode_xml, encode_xml
+from nfse_nacional.client import AdnClient, ParametrosClient, SefinClient, decode_xml, encode_xml
 from nfse_nacional.environment import PRODUCAO_RESTRITA
 from nfse_nacional.errors import RejectionError, TransportError
 
@@ -79,9 +79,11 @@ class ClientTest(unittest.TestCase):
         cert = Certificate.from_pfx(pki.client_pfx, PFX_PASSWORD)
         cls.ca_file = str(tmp / "ca.pem")
         cls.context = cert.ssl_context(cafile=cls.ca_file)
-        env = replace(PRODUCAO_RESTRITA, sefin_url=cls.server.base + "/SefinNacional", adn_url=cls.server.base + "/contribuintes")
+        env = replace(PRODUCAO_RESTRITA, sefin_url=cls.server.base + "/SefinNacional",
+                      adn_url=cls.server.base + "/contribuintes", parametros_url=cls.server.base + "/parametrizacao")
         cls.sefin = SefinClient(cls.context, env, timeout=10)
         cls.adn = AdnClient(cls.context, env, timeout=10)
+        cls.parametros = ParametrosClient(cls.context, env, timeout=10)
 
     def setUp(self):
         self.server.routes.clear()
@@ -178,6 +180,63 @@ class ClientTest(unittest.TestCase):
         self.server.routes[("GET", "/contribuintes/DFe/4?lote=true")] = (403, b"<html>WAF</html>", {})
         with self.assertRaises(TransportError):
             self.adn.fetch_dfe(4)
+
+    def test_convenio_returns_raw_json_and_uses_parameters_base(self):
+        body = {"mensagem": None, "parametrosConvenio": {
+            "tipoConvenioDeserializationSetter": 1,
+            "aderenteAmbienteNacional": 1, "aderenteEmissorNacional": 0,
+            "situacaoEmissaoPadraoContribuintesRFB": -1, "aderenteMAN": -1,
+            "permiteAproveitametoDeCreditos": False,
+        }}
+        self.server.json("GET", "/parametrizacao/3550308/convenio", 200, body)
+        self.assertEqual(self.parametros.get_convenio("3550308"), body)
+        method, path, headers, payload = self.server.requests[0]
+        self.assertEqual((method, path, payload), ("GET", "/parametrizacao/3550308/convenio", b""))
+        self.assertEqual(headers["Accept"], "application/json")
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_convenio_rejections_preserve_plain_message(self):
+        for status in (400, 404):
+            with self.subTest(status=status):
+                body = {"mensagem": "Município não localizado", "parametrosConvenio": None}
+                self.server.json("GET", "/parametrizacao/3550308/convenio", status, body)
+                with self.assertRaises(RejectionError) as ctx:
+                    self.parametros.get_convenio("3550308")
+                self.assertEqual(ctx.exception.status, status)
+                self.assertEqual(ctx.exception.body, body)
+                self.assertEqual(ctx.exception.messages[0].description, body["mensagem"])
+                self.assertEqual(ctx.exception.codes, ["UNKNOWN"])
+
+    def test_convenio_unusable_responses_are_transport_errors(self):
+        path = "/parametrizacao/3550308/convenio"
+        for status, body in ((200, {}), (200, {"parametrosConvenio": None}),
+                             (200, {"parametrosConvenio": []}), (200, []),
+                             (400, {}), (404, {"mensagem": None})):
+            with self.subTest(status=status, body=body):
+                self.server.json("GET", path, status, body)
+                with self.assertRaises(TransportError) as ctx:
+                    self.parametros.get_convenio("3550308")
+                self.assertEqual(ctx.exception.status, status)
+        for status in (200, 400, 401, 403, 404, 429, 503):
+            with self.subTest(status=status):
+                self.server.routes[("GET", path)] = (status, b"<html>gateway</html>", {"Retry-After": "7"})
+                with self.assertRaises(TransportError) as ctx:
+                    self.parametros.get_convenio("3550308")
+                self.assertEqual(ctx.exception.status, status)
+                self.assertEqual(ctx.exception.retry_after, 7.0)
+
+    def test_convenio_rejects_invalid_codes_before_network(self):
+        for code in ("", "355030", "35503080", "355030/", "../3550", "３５５０３０８", 3550308, None, True):
+            with self.subTest(code=code), self.assertRaisesRegex(ValueError, "seven-digit ASCII IBGE"):
+                self.parametros.get_convenio(code)
+        self.assertEqual(self.server.requests, [])
+
+    def test_convenio_requires_client_certificate(self):
+        no_client_cert = ssl.create_default_context(cafile=self.ca_file)
+        client = ParametrosClient(no_client_cert, self.parametros.environment, timeout=5)
+        with self.assertRaises(TransportError):
+            client.get_convenio("3550308")
+        self.assertEqual(self.server.requests, [])
 
     def test_server_requires_client_certificate(self):
         no_client_cert = ssl.create_default_context(cafile=self.ca_file)

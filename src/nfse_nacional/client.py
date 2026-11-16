@@ -1,4 +1,4 @@
-"""HTTP clients for SEFIN Nacional (issuance, events) and ADN (DF-e distribution).
+"""HTTP clients for SEFIN Nacional and ADN distribution and municipal parameters.
 Payloads are signed XML documents, gzip-compressed and base64-encoded inside a JSON
 envelope. Business rejections come back as JSON with E-codes and raise RejectionError;
 anything without a usable body raises TransportError.
@@ -246,6 +246,34 @@ class SefinClient:
         if resp.status in (400, 404) and body is not None:
             raise RejectionError(resp.status, parse_messages(body, "erro", "erros", "Erros"), body)
         raise _transport_error(resp, "get_event")
+
+
+class ParametrosClient:
+    """Read-only ADN municipal parameters, using the caller's mTLS context."""
+
+    def __init__(self, context: ssl.SSLContext, environment: Environment, timeout: float = DEFAULT_TIMEOUT):
+        self.environment = environment
+        self._http = _Http(environment.parametros_url, context, timeout)
+
+    def get_convenio(self, municipality_code: str) -> dict[str, Any]:
+        """GET /{codigoMunicipio}/convenio; return the unmodified JSON object.
+
+        ``municipality_code`` is a seven-digit IBGE code. This endpoint has no
+        competence parameter: its flags do not establish historical agreement
+        validity or determine a service's ISS rate. See the recorded official
+        contract in docs/research/nfse-nacional-learnings.md.
+        """
+        if (not isinstance(municipality_code, str) or len(municipality_code) != 7
+                or not municipality_code.isascii() or not municipality_code.isdigit()):
+            raise ValueError("municipality_code must be a seven-digit ASCII IBGE code")
+        resp = self._http.request("GET", f"/{municipality_code}/convenio")
+        body = resp.json()
+        if resp.status == 200 and body is not None and isinstance(body.get("parametrosConvenio"), dict):
+            return body
+        # Parametrização documents a plain mensagem, not SEFIN's E-code list.
+        if resp.status in (400, 404) and body is not None and isinstance(body.get("mensagem"), str):
+            raise RejectionError(resp.status, parse_messages(body, "mensagem"), body)
+        raise _transport_error(resp, "get_convenio")
 
 
 class AdnClient:

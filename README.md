@@ -141,6 +141,31 @@ Para cancelar, use `events.build_cancellation(...)`, assine com `signing.sign` e
 | E0120 | `IM` foi informada, mas o município não tem cadastro CNC do prestador. | Omita `Provider.IM`. |
 | E0710, E0712, E0713 | A opção de `totTrib` não corresponde ao regime. | Use o construtor de `TotalTax` permitido para o regime. |
 
+### Consultar o convênio municipal antes de emitir
+
+Use o mesmo contexto mTLS e ambiente da emissão:
+
+```python
+from nfse_nacional.client import ParametrosClient
+
+parametros = ParametrosClient(cert.ssl_context(), ENV)
+convenio = parametros.get_convenio("3550308")  # código IBGE com sete dígitos
+print(convenio["parametrosConvenio"])
+```
+
+O método devolve o JSON original, incluindo `mensagem` e `parametrosConvenio`,
+sem converter os indicadores em booleanos. Respostas HTTP 400/404 com `mensagem`
+geram `RejectionError`; a mensagem fica em `exception.messages` e o JSON em
+`exception.body`. A API não documenta E-codes nesse retorno, por isso o código
+da mensagem é `UNKNOWN`. Falhas de conexão e respostas inesperadas geram
+`TransportError`, como nos outros clientes.
+
+Essa consulta não recebe uma data de competência e não prova a vigência histórica
+do convênio nem determina a alíquota de um serviço. Avalie os parâmetros antes de
+chamar `sefin.emit`; o cliente não altera a DPS nem aplica automaticamente regras
+tributárias. As consultas de alíquotas e benefícios ainda não têm métodos nesta
+biblioteca. Veja o [contrato oficial verificado e seus limites](docs/research/nfse-nacional-learnings.md#municipal-parameters-api).
+
 ### DANFSe (PDF)
 
 O PDF é gerado localmente em uma página A4, seguindo como referência a NT 008/2026 v1.02:
