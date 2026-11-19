@@ -126,13 +126,33 @@ automatic DPS mutation is introduced. Local synthetic mTLS tests cover routing,
 raw responses, errors, input validation and the client-certificate requirement;
 they do not query government services.
 
+## NFS-e fiscal deadlines under Ato Conjunto 7/2026
+
+The [November 13 CGNFS-e notice](https://www.gov.br/nfse/pt-br/noticias/cgnfs-e-informa-ato-conjunto-rfb-cgibs-no-7-2026-atualiza-o-cronograma-de-obrigatoriedade-de-emissao-da-nfs-e-para-ibs-e-cbs)
+summarizes [Ato Conjunto RFB/CGIBS nº 7/2026](https://cgibs.gov.br/upload/arquivos/202611/13061456-ato-conjunto-7-rfb-cgibs-alteracao-ato-4.pdf),
+which amended [Ato Conjunto nº 4/2026, art. 1](https://hom.cte.fazenda.gov.br/portal/informe.aspx?informe=108).
+The dates below apply to taxable events on or after the stated date for NFS-e
+issuance for IBS/CBS purposes.
+
+| NFS-e operation (art. 1, III) | General schedule | Simples Nacional taxpayers covered by § 1 |
+| --- | --- | --- |
+| **d** — Services subject to ISS on the LC 116/2003 list, excluding items a–c | 2026-10-01 (unchanged) | 2027-01-01 |
+| **e–h** — Intangible supplies outside the LC 116/2003 list and outside ICMS, condominium fees and other condominium revenue, rental of movable property, rental, transfer for consideration or leasing of immovable property except where item d applies, and other services outside items a–g | 2027-01-01 | 2027-01-01 |
+| **a–c** — Digital platform supplies or intermediation covered by LC 214/2025 art. 22, ISS services under LC 116/2003 subitems 1.03, 1.05 and 1.09, and municipal collective passenger transport under subitem 16.01 | 2027-03-01 | 2027-03-01 |
+
+For Simples Nacional, § 1 sets January 1 for NFS-e items d–h and March 1
+for the other cases in art. 1. Issuer integrations must determine the applicable
+regime and operation for each taxable event. The DPS field `opSimpNac` alone
+cannot establish the deadline. Ordinary NFS-e and ISS requirements remain
+separate from this IBS/CBS schedule.
+
 ## NT 009 migration boundary
 
 The October 29 notice identifies NT 004 plus the NT 007 retention-domain changes
 as current production. It identifies NT 009 v1.0 release 1 as available for tests,
-with later releases to enter testing first. Releases 1–3 are targeted for
-2026-12-01 production, while a formal schedule remains to be published.
-This is an announced target, not proof of the exact rejection date for old XML.
+with later releases to enter testing first. The notice targets 2026-12-01 for
+technical deployment of releases 1–3 in production, with a formal schedule to
+follow. The exact rejection date for old XML remains unconfirmed.
 
 The bundled 2026-10-20 test schemas implement release 1 only. NT 009 v1.01 adds
 opSimpNac=4, regApIBSCBSSN and cAtvSN and relocates indDest/dest to infDPS.
@@ -142,7 +162,9 @@ pointing production at the existing NT009 enum does not implement that migration
 On this verification date, the [official test documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/producao-restrita)
 still links the 2026-10-20 XSD bundle; no release-2 XSD bundle was linked there.
 
-The notice permits ADN to receive missing IBS/CBS groups even for obligated
+## Technical validation of IBS/CBS
+
+The October 29 notice permits ADN to receive missing IBS/CBS groups even for obligated
 issuers. Supplying the group requires its applicable mandatory data, including
 recipient information when required by the operation. The current model is
 partial. No issuer's compliance, payment waiver or 2027 tax treatment was verified.
