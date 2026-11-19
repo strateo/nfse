@@ -40,6 +40,25 @@ and the [October 29 notice](https://www.gov.br/nfse/pt-br/noticias/nfs-e-naciona
 
 ## Later-layout implementation boundary
 
+### Official publication recheck: 2026-11-16 UTC
+
+The official [test documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/producao-restrita)
+still lists only `NFSe-ESQUEMAS_XSD-PRODREST-v1.01-20261020` (page updated
+2026-10-20). The [production documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual)
+still lists `NFSe-ESQUEMAS_XSD-v1.01-20260209` (page updated 2026-11-04).
+The [RTC page](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc)
+publishes NT 009 v1.01 and its Anexo VI spreadsheet, but no matching later-release
+XSD bundle was linked on these pages. The [deployment updates](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/atualizacoes-e-implantacoes)
+still identify the 2026-10-20 release-1 changes in Produção Restrita. The
+[October 29 notice](https://www.gov.br/nfse/pt-br/noticias/nfs-e-nacional-confira-oas-rientacoes-sobre-leiaute-em-producao-regras-de-preenchimento-de-ibs-cbs-e-status-da-nota-tecnica-009)
+continues to target December 1 for releases 1–3, with a formal schedule to follow.
+
+This recheck concerns published links and rollout statements, not freshly
+downloaded archive hashes or observed runtime layout support. The archive hashes
+above remain the November 9 observations. No later layout is implemented or
+enabled on the strength of a spreadsheet, unofficial schema or calendar date.
+Issue #4 cannot close on the currently available source evidence.
+
 The [NT 009 v1.01 specification](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc/nota-tecnica-009-se-cgnfs-e-v-1-01.pdf)
 describes `opSimpNac=4`, `regApIBSCBSSN`, `cAtvSN`, and relocation of
 `indDest`/`dest`. These must not be emitted into the release-1 schemas or enabled
@@ -66,14 +85,11 @@ used, cancellation. Use an appropriate A1 certificate and reviewed issuer,
 recipient, service and tax inputs. This document and issue #4 grant no such
 authorization. The script uses Produção Restrita endpoints only.
 
-Use the parent/project virtual environment on this checkout with `PYTHONPATH`
-pointing at its `src`, or install the reviewed public package in your own
-environment. On this Windows checkout the verified offline command is:
+Use the checkout's virtual environment with the reviewed package installed.
+On this Windows checkout the verified offline command is:
 
 ```powershell
-$env:PYTHONPATH = (Resolve-Path src).Path
-$env:PYTHONDONTWRITEBYTECODE = '1'
-..\.venv\Scripts\python -W error::ResourceWarning -m unittest discover -s tests
+.venv\Scripts\python -W error::ResourceWarning -m unittest discover -s tests
 ```
 
 Start with a private output directory and the dry run below. Replace the
@@ -81,7 +97,7 @@ placeholders with reviewed values. The password comes from a hidden prompt or
 `NFSE_PFX_PASSWORD`; do not place it in command-line arguments.
 
 ```powershell
-..\.venv\Scripts\python scripts/smoke_producao_restrita.py `
+.venv\Scripts\python scripts/smoke_producao_restrita.py `
   --pfx '<private A1 path>' --c-loc-emi '<issuer IBGE code>' `
   --op-simp-nac 3 --p-tot-trib-sn '<reviewed percentage>' `
   --c-trib-nac '<reviewed national service code>' `
@@ -93,7 +109,7 @@ case; `--help` lists them. A successful dry run proves only construction, local
 XSD validation, signing and persistence. It makes no SEFIN/ADN requests.
 
 After review and issuer authorization, run the reviewed inputs without
-`--dry-run`, adding `--check-recovery --cancel --adn-last-nsu <reviewed cursor>
+`--dry-run`, adding `--check-dps-absence --check-recovery --cancel --adn-last-nsu <reviewed cursor>
 --adn-max-batches 10` for the full probe. `--cancel` registers cancellation of
 the newly issued test document. A new invocation allocates a new nDPS; after an
 interruption, recover the saved signed DPS with `SefinClient.recover()` instead
@@ -102,6 +118,14 @@ not a production or concurrent allocator.
 
 The runner records these observations:
 
+- Optional unknown-DPS lookup: `--check-dps-absence` calls `GET /dps/{id}` for
+  the reserved, persisted DPS before issuance. It stops before sending if the
+  lookup already resolves to an NFS-e or fails. The existing client policy is
+  unchanged: only a JSON-object 404 returns `None`; an empty/HTML 404 remains a
+  `TransportError`. Failure status/body are retained in the private report;
+  the allowlisted summary includes only the outcome, status and recognized codes.
+  Success does not invent an HTTP status absent from the client's public return.
+  A dry run makes no lookup, even when this flag is set.
 - Issuance and query: compare the queried XML to the saved emission response,
   using canonical XML to ignore declaration/attribute-order differences.
 - Same-document recovery: re-read the saved signed bytes, recover using the same
@@ -114,6 +138,32 @@ The runner records these observations:
   Reaching the bound is `not_observed` for exhaustion, not proof of an empty queue.
   There are no retry waits or unbounded polling. This probe does not persist ADN
   documents or a durable cursor; it is not a distribution consumer.
+
+## Additional cases required by issue #4
+
+Review and authorize each live case separately. An issuer certificate does not
+authorize impersonating a different tax regime. Use an appropriate issuer for
+MEI, ME/EPP and Não Optante checks; one issuer's successful note does not cover
+the others.
+
+- Confirm SEFIN accepts an authenticated call with the default
+  `Certificate.ssl_context()`, including its TLS renegotiation path. A Windows
+  certificate-store request does not establish the Python/OpenSSL behavior.
+- Exercise a CNPJ recipient without an address. The smoke CLI now permits
+  omitting the entire national address, matching the builder's E0235 behavior;
+  partial addresses still fail locally. Foreign recipients still need an address.
+- Verify E0713 for a Não Optante using `indTotTrib`, and percent/amount totals
+  for MEI and ME/EPP. The current smoke CLI intentionally constructs only its
+  existing regime-specific total choices and cannot exercise that whole matrix.
+  A separately reviewed case runner is still required; do not bypass offline
+  guards implicitly or claim these cases from a default smoke run.
+- Verify the NT 009 foreign no-NIF address rule (#12) and municipal agreement
+  lookup (#13) independently. The agreement endpoint has no competence-date
+  parameter and cannot prove historical agreement validity.
+
+No live acceptance run or real-document fixture was produced by this preparation.
+Later-release support, reviewed fiscal inputs, issuer authorization and observed
+SEFIN/ADN results remain outstanding.
 
 ## Private evidence and public summary
 
