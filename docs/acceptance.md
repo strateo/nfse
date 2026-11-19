@@ -4,6 +4,11 @@ This is the execution record and runbook for [issue #4](https://github.com/strat
 Offline tests, an HTTP acceptance response and issuer tax compliance are separate
 claims. No live government calls were made while preparing this runbook.
 
+For the fiscal deadlines by regime and operation, see the
+[Ato Conjunto nº 7/2026 table](research/nfse-nacional-learnings.md#nfs-e-fiscal-deadlines-under-ato-conjunto-72026).
+Those dates govern the issuance obligation for IBS/CBS purposes. The December 1
+target below refers to technical deployment of NT 009.
+
 ## Published layouts checked on 2026-11-09
 
 | Public API | Exact bundled release | Officially documented availability |

@@ -224,6 +224,12 @@ not implement the later NT 009 v1.01 adjustments or switch layouts by date.
 Production deployment requires checking the schedule and matching official
 bundle; compatibility after the transition has not been established.
 
+### IBS/CBS fiscal deadlines
+
+Ato Conjunto RFB/CGIBS nº 7/2026 updates the NFS-e fiscal deadlines by tax regime
+and operation. The 2026-12-01 target above refers to technical deployment of
+NT 009. See the [fiscal deadline table](docs/research/nfse-nacional-learnings.md#nfs-e-fiscal-deadlines-under-ato-conjunto-72026).
+
 ADN can accept missing IBS/CBS data even from obligated issuers. Supplying the
 group requires the applicable fields and classifications; the current model is
 partial, and technical acceptance does not establish tax compliance.

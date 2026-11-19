@@ -220,6 +220,12 @@ não implementa os ajustes posteriores da NT 009 v1.01 nem muda de leiaute pela 
 Uma implantação em produção exige conferir o cronograma e o pacote oficial
 correspondente; a compatibilidade após a transição não está comprovada.
 
+### Prazos fiscais de IBS/CBS
+
+O Ato Conjunto RFB/CGIBS nº 7/2026 atualiza os prazos fiscais da NFS-e conforme
+o regime e a operação. A previsão de 01/12/2026 acima diz respeito à implantação
+técnica da NT 009. Consulte a [tabela de prazos fiscais](docs/research/nfse-nacional-learnings.md#nfs-e-fiscal-deadlines-under-ato-conjunto-72026).
+
 O ADN pode aceitar a ausência de IBS/CBS mesmo para emissores sujeitos à obrigação.
 Informar o grupo exige cumprir os campos e classificações aplicáveis; o modelo
 atual é parcial e a aceitação técnica não comprova conformidade tributária.
