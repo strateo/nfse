@@ -45,7 +45,7 @@ from nfse_nacional.errors import NfseError, RejectionError, TransportError
 
 STATE_FILE = "smoke-state.json"
 ACCEPTANCE_STEPS = (
-    "certificate", "build DPS", "HEAD /dps", "emit", "GET /nfse", "recover",
+    "certificate", "build DPS", "HEAD /dps", "GET /dps absent", "emit", "GET /nfse", "recover",
     "cancel", "GET event", "ADN distribution", "ADN progression", "ADN exhaustion",
 )
 
@@ -141,6 +141,21 @@ def _check_adn(adn: AdnClient, report: Report, last_nsu: int, max_batches: int) 
     report.record("ADN distribution", True, "batch limit reached")
     report.record("ADN progression", progressed, "document batch advanced NSU")
     report.record("ADN exhaustion", False, "not observed before batch limit", outcome="not_observed")
+    return True
+
+
+def _check_dps_absence(sefin: SefinClient, report: Report, dps_id: str) -> bool:
+    """Probe the normal recovery lookup before issuance; never relax its 404 policy."""
+    try:
+        key = sefin.get_access_key(dps_id)
+    except NfseError as e:
+        detail, extra = _error_detail(e)
+        report.record("GET /dps absent", False, detail, **extra)
+        return False
+    if key is not None:
+        report.record("GET /dps absent", False, "DPS already resolves to an NFS-e; stop and recover the saved document")
+        return False
+    report.record("GET /dps absent", True, "lookup returned None under the client's JSON-404 policy")
     return True
 
 
@@ -293,6 +308,10 @@ def run(args: argparse.Namespace) -> int:
         report.record("HEAD /dps", False, detail, **extra)
         failures += 1
 
+    if args.check_dps_absence and not _check_dps_absence(sefin, report, note.id):
+        report.save()
+        return 1
+
     try:
         try:
             result = sefin.emit(signed)
@@ -405,6 +424,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--profile", default="RSA_SHA1", choices=[x.name for x in signing.SignatureProfile])
     p.add_argument("--cancel", action="store_true", help="cancel the note after issuing it")
     p.add_argument("--check-recovery", action="store_true", help="recover the same saved DPS after emission and compare its NFS-e")
+    p.add_argument("--check-dps-absence", action="store_true", help="GET the reserved DPS before emission; stop unless the recovery lookup confirms absence")
     p.add_argument("--adn-last-nsu", type=int, default=0, help="initial ADN cursor (default 0)")
     p.add_argument("--adn-max-batches", type=int, default=10, help="bounded ADN requests; no retry waits (default 10)")
     p.add_argument("--dry-run", action="store_true", help="build, sign and save the DPS without network calls")
@@ -441,8 +461,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             p.error("foreign recipient address cannot include Brazilian municipality or CEP")
         if not foreign and (args.toma_c_pais or args.toma_postal or args.toma_city or args.toma_region):
             p.error("Brazilian recipient address cannot include foreign address fields")
-    elif args.toma_cnpj or foreign:
-        p.error("a full recipient address is required for CNPJ, NIF, or no-NIF recipients")
+    elif foreign:
+        p.error("a full recipient address is required for NIF or no-NIF recipients")
     if foreign and not args.toma_c_pais:
         p.error("--toma-c-pais is required for foreign recipients")
     return args
