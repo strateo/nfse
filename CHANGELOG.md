@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 (2026-11-24)
+
+- Add an optional pre-issuance DPS lookup to the Produção Restrita smoke runner.
+  Stop before submission if the lookup fails or the reserved DPS already resolves
+  to an NFS-e.
+- Let the smoke runner cover CNPJ recipients without a national address and document
+  the remaining acceptance checks.
+- Align the package and runtime version with the release tag.
+
+## 0.1.5 (2026-11-19)
 
 - Require a foreign address for a `cNaoNIF` recipient under `Layout.NT009` (E0242).
   NT 009 Anexo VI extends the rule from NIF to cNaoNIF. `Layout.V1_01` still
