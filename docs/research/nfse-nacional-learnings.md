@@ -162,6 +162,30 @@ pointing production at the existing NT009 enum does not implement that migration
 On this verification date, the [official test documentation](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/producao-restrita)
 still links the 2026-10-20 XSD bundle; no release-2 XSD bundle was linked there.
 
+## Official RTC calculators
+
+Checked on 2026-11-25 against the Receita Federal repositories
+[calculadora-rtc-regime-regular](https://github.com/ReceitaFederal/calculadora-rtc-regime-regular)
+(1.6.1 → [1.7.2](https://github.com/ReceitaFederal/calculadora-rtc-regime-regular/blob/1.7.2/CHANGELOG.md),
+released 2026-11-25) and
+[calculadora-rtc-simples-nacional](https://github.com/ReceitaFederal/calculadora-rtc-simples-nacional)
+(0.0.6 → [1.0.2](https://github.com/ReceitaFederal/calculadora-rtc-simples-nacional/blob/1.0.2/CHANGELOG.md),
+released 2026-11-20). The GitHub release notes are empty; the findings come from
+each repository's `CHANGELOG.md` and the regime-regular Flyway migrations in
+`flyway/sql/manutencao/`. This library emits CST, cClassTrib and cIndOp but
+computes no IBS/CBS amounts, so none of these releases changes its behaviour.
+
+| Upstream change | Consequence for this library's callers |
+| --- | --- |
+| V0065 moves the `CLASSIF_NBS_INDOP_LC` and `INDICADOR_OPERACAO_IBS_CBS` switch: the old rows end 2026-11-30 and the new rows start **2026-12-01** (previously 11-02/11-03). V0061 reloads those new rows from the updated Anexo VIII and adds LC 116 item 99.05.01 (condominium operations); V0064 adds the omitted service 20.02, NBS `106062000`, cIndOp `100301`; V0066 removes an invalid row. | The cIndOp set changes on the NT 009 production target date. `IbsCbs.cIndOp` is caller input and is not checked offline, so callers must re-derive it for competences from 2026-12-01. |
+| V0062 and V0073 load the cClassTrib table of IT 2025.002 v1.70 (2026-10-01: nine new codes, adjusted classifications and DF-e links) and v1.71 (renames 410003 and 410026, adds indDIR to 410003 and 410999). | `IbsCbs.cClassTrib` is also unchecked; callers must use the current table. |
+| Simples Nacional 1.0.0 with regime-regular V0071 calculate Simples Nacional for NF-e and NFS-e in one contract. For the NFS-e the regime comes from `opSimpNac`, `regApIBSCBSSN` and `regApTribSN` (Anexo VI v1.04.01 fields 151–153); the rate used has 2 decimal places (`pIBSSN`/`pCBSSN`); one item; Imposto Seletivo is forbidden (VSN-035). The migration also covers the tpRBSN effect, ISS-in-Simples indicators per activity and the ISS situations that pick the rate pair. | These are the release-2 fields listed as not implemented in the NT 009 boundary above. The calculator's validation (NFS-e rules 291, 292 and 313) is a reference for that follow-up, not a substitute for the official XSD. |
+| V0061 (1.6.2) and V0068 (1.7.0) swap the Fator R annexes of activity `cAtivSN 09`: III without and V with Fator R becomes V without and III with, per LC 123/2006 art. 18 §§ 5-J and 5-M. | Relevant once `cAtvSN` is modelled. |
+| Regime-regular 1.7.2 rounds each published value once and reuses it: `vIBS` is `vIBSUF + vIBSMun`, totals sum the published item values, the effective rate is rounded to 4 places before multiplying, `vBC` to 2 places, ties go to even. Previously totals could miss the item sum (rejection 1091). | No effect today. `format_decimal` never rounds: it rejects more than two decimal places. Any future IBS/CBS amount calculation must round explicitly by the same policy before serialization. |
+| Both moved to Java 25 and Spring Boot 4.1.2 (1.7.0/1.0.0), added the JVM flag `-XX:-UseBASE64Intrinsics` for the 2026-11-17 OpenJDK advisory (1.7.1/1.0.1), and regime-regular 1.7.2 fixes `GET versao/status`, which returned 500 in the offline profile since 1.7.0. | Only relevant when running the offline packages; use 1.7.2 or later. |
+
+No client's cIndOp or cClassTrib values were compared against the new tables.
+
 ## Technical validation of IBS/CBS
 
 The October 29 notice permits ADN to receive missing IBS/CBS groups even for obligated
